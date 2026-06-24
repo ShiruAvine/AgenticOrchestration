@@ -1,0 +1,19 @@
+{
+  "name": "orchestration",
+  "displayName": "Agentic Orchestration",
+  "description": "Generic orchestration framework. The main session acts as orchestrator and dispatches work to architect, engineer, and reviewer specialists. Specialists are project-agnostic and learn each project's stack and conventions from its CLAUDE.md at runtime.",
+  "author": {
+    "name": "ShiruAvine"
+  },
+  "homepage": "https://github.com/ShiruAvine/AgenticOrchestration",
+  "repository": "https://github.com/ShiruAvine/AgenticOrchestration",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "agents",
+    "subagents",
+    "workflow",
+    "architect",
+    "code-review"
+  ]
+}

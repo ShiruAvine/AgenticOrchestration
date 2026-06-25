@@ -1,5 +1,6 @@
 {
   "name": "orchestration",
+  "version": "1.0.0",
   "displayName": "Agentic Orchestration",
   "description": "Generic orchestration framework. The main session acts as orchestrator and dispatches work to architect, engineer, and reviewer specialists. Specialists are project-agnostic and learn each project's stack and conventions from its CLAUDE.md at runtime.",
   "author": {

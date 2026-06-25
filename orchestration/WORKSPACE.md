@@ -18,13 +18,17 @@ The workspace profile is a **personal** artifact — it captures how *you* drive
 workspace, and it must never be committed to a shared repo. Setup therefore writes
 it to a gitignored location and adds the necessary `.gitignore` entries:
 
-- **single-repo / monorepo:** `<repo>/.claude/orchestration/workspace.local.md`
-  (the `.local.md` suffix marks it personal; setup adds it + `.claude/reports/` to
-  the repo's `.gitignore`).
-- **multi-repo:** `<workspace-root>/.orchestration/workspace.md` (the parent folder
-  is not a repo, so it is inherently un-shared; setup still adds `.claude/reports/`
-  to each in-scope **member** repo's `.gitignore`, since engineer/review reports
-  land there).
+- **single-repo / monorepo:** `<repo>/.claude/orchestration/workspace.local.json`
+  (source of truth) plus a generated `workspace.local.md` view. The `.local.*` suffix
+  marks them personal; setup adds `.claude/orchestration/*.local.*` + `.claude/reports/`
+  to the repo's `.gitignore`.
+- **multi-repo:** `<workspace-root>/.orchestration/workspace.json` (source of truth)
+  plus a generated `workspace.md` view. The parent folder is not a repo, so it is
+  inherently un-shared; setup still adds `.claude/reports/` to each in-scope **member**
+  repo's `.gitignore`, since engineer/review reports land there.
+
+The **`.json` is the machine source of truth** that every later step reads; the `.md`
+is a human-readable view rendered from it by `lib/profile.mjs`. Never parse the `.md`.
 
 Plugin **enablement** is likewise best kept personal: enable orchestration in your
 user-level `~/.claude/settings.json` rather than committing it to a project's
@@ -50,7 +54,7 @@ The current working directory is inside one git repository, and that repository
 is a single project (one `CLAUDE.md`, one package/module tree).
 
 - **Members:** one — the repo itself.
-- **Profile location:** `<repo>/.claude/orchestration/workspace.local.md` (gitignored)
+- **Profile location:** `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`; gitignored)
 - **Reports:** `<repo>/.claude/reports/...` (gitignored)
 - **Diff baseline:** one, in that repo.
 
@@ -60,7 +64,7 @@ sub-projects** (packages / apps / services), e.g. detected via a `workspaces`
 field, multiple `package.json`/`pyproject.toml`, or multiple nested `CLAUDE.md`.
 
 - **Members:** each sub-project the user marks in scope.
-- **Profile location:** `<repo>/.claude/orchestration/workspace.local.md` (gitignored)
+- **Profile location:** `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`; gitignored)
 - **Reports:** `<repo>/.claude/reports/...` (gitignored; single reports tree; tag entries by member).
 - **Diff baseline:** one repo, but per-member diffs are scoped by member path
   (`git diff <baseline> -- <member-path>`).
@@ -72,30 +76,55 @@ workflow). Each member repo is autonomous — its own history, branch, `CLAUDE.m
 and `.claude/`.
 
 - **Members:** each child repo the user marks in scope.
-- **Profile location:** `<workspace-root>/.orchestration/workspace.md`
+- **Profile location:** `<workspace-root>/.orchestration/workspace.json` (+ rendered `.md`)
   (the parent is not a repo, so the profile lives in a plain folder at the root and
   is inherently un-shared).
 - **Reports:** each member writes to **its own** `<member>/.claude/reports/...`
   (setup gitignores that path in each in-scope member).
 - **Diff baseline:** one **per member**, in that member's repo.
 
+## Tooling (`lib/`)
+
+The mechanical work is **code**, not prose-the-LLM-interprets. These zero-dependency
+node scripts under `${CLAUDE_PLUGIN_ROOT}/lib/` are the deterministic substrate:
+
+- **`detect.mjs`** — runs the detection algorithm; emits a `workspace@1` JSON object
+  (facts + `decisions_needed`) on stdout. `node detect.mjs [root]`.
+- **`profile.mjs`** — `validate <json>` (schema check), `finalize <detected.json>
+  <answers.json>` (apply the user's decision answers deterministically, then
+  re-validate), `render <json>` (emit the human `.md` view).
+- **`schema.mjs`** — the validators (the single definition of both data shapes).
+- **`manifest.mjs` / `gates.mjs`** — run-time substrate (see `ORCHESTRATION.md`).
+
+The LLM's job shrinks to judgment: ask the crucial decisions, write a small
+`answers.json`, and let the scripts produce and validate the profile.
+
 ## Setup flow
 
 Phase 0 is deterministic-first, human-light:
 
 1. **`/orchestrate-setup` dispatches `chuck-workspace-analyst`** — a read-only agent
-   that runs the detection below as concrete commands, profiles every member, drafts
-   the full profile to a `.draft` file, and returns the draft path plus a short
-   `DECISIONS NEEDED` list (crucial items only) and proposed `.gitignore` actions.
+   that RUNS `lib/detect.mjs`, sanity-checks the JSON, writes it to a
+   `workspace.json.draft`, and returns the draft path, the members table, the
+   `decisions_needed` list (crucial items only), and proposed `.gitignore` actions.
 2. **The command asks the user only the crucial decisions** (via `AskUserQuestion`),
-   each pre-filled with the analyst's recommended default.
-3. **The command finalizes** — applies the answers, applies the `.gitignore` actions,
-   promotes `.draft` to the real profile, and reports the result.
+   each pre-filled with the script's recommended default.
+3. **The command finalizes** — writes a small `answers.json`, runs
+   `lib/profile.mjs finalize` (which applies answers + validates) then `render`,
+   applies the `.gitignore` actions, promotes the draft to `workspace.json` (+ `.md`),
+   and reports the result.
 
 ## Detection algorithm (deterministic)
 
+**This algorithm is implemented as code in `lib/detect.mjs` and executed — it is no
+longer interpreted prose.** `chuck-workspace-analyst` RUNS the script
+(`node ${CLAUDE_PLUGIN_ROOT}/lib/detect.mjs <root>`) and consumes its JSON output;
+the steps below are that script's **specification** (and the fallback if node is
+unavailable). The script emits a `workspace@1` object with `decisions_needed`
+populated; it never guesses — insufficient evidence becomes a decision, not a value.
+
 Every conclusion must come from a command output or a file read — never a guess. If
-evidence is insufficient for a field, it becomes a `DECISIONS NEEDED` item, not an
+evidence is insufficient for a field, it becomes a `decisions_needed` item, not an
 invented value.
 
 1. **Topology.** `git rev-parse --is-inside-work-tree` in the cwd.
@@ -123,8 +152,17 @@ invented value.
    | react / angular / vue / svelte / next / vite-UI deps | `chuck-frontend-engineer` |
    | nest / express / fastify / koa / hapi; or Python/Go/Java web frameworks | `chuck-backend-engineer` |
    | both frontend **and** backend deps present | ambiguous → `DECISIONS NEEDED` (default `chuck-backend-engineer`) |
-   | only notebooks/data/ML artifacts (`.ipynb`, data dirs, no service entrypoint) | `out-of-scope: research` |
-   | only infra (`docker-compose*.yml`, `db/`, k8s, terraform; no app code) | `out-of-scope: infra` |
+   | only notebooks/data/ML artifacts (`.ipynb`, data dirs, no service entrypoint) | no matching agent → `DECISIONS NEEDED` (default `out-of-scope: research`) |
+   | only infra (`docker-compose*.yml`, `db/`, k8s, terraform; no app code) | no matching agent → `DECISIONS NEEDED` (default `out-of-scope: infra`) |
+   | any other stack with **no active `chuck-*` role that fits** (e.g. Go/Rust/data when no such engineer is active) | no matching agent → `DECISIONS NEEDED` (default `out-of-scope: <reason>`) |
+
+   **No-matching-agent disposition.** When a member's stack maps to no active
+   specialist role, the default recommendation is `out-of-scope: <reason>`, but the
+   user may instead choose to **keep it in scope, flagged** — recorded as
+   `in-scope: no-matching-agent (<reason>)`. A flagged member is tracked in the
+   registry and may be the target of a ticket, but it has no specialist to implement
+   work and usually no gates; `/orchestrate` must surface that flag before assigning
+   work against it (see "Members with no matching agent" below).
 
 4. Draft the profile and surface decisions per the rules below.
 
@@ -136,8 +174,11 @@ the draft as a default the user can simply accept — it is *not* asked.
 
 Raise a decision for:
 - **Ambiguous topology** (e.g. a repo that is both an app and a set of packages).
-- **Out-of-scope exclusions** — confirm each member classified `out-of-scope`.
-- **Missing `CLAUDE.md`** — generate a minimal one / proceed with reduced gates / exclude.
+- **No matching agent** — a member whose stack fits no active specialist role
+  (research/ML, infra, or any unsupported stack). Confirm its disposition: exclude
+  (`out-of-scope: <reason>`, the default) **or** keep it in scope flagged
+  (`in-scope: no-matching-agent (<reason>)`).
+- **Missing `CLAUDE.md`** — generate a minimal one / proceed with reduced context / exclude.
 - **Ambiguous role** (frontend + backend both present).
 - **Unresolved gate** for an in-scope member (e.g. no detectable test command).
 
@@ -153,48 +194,41 @@ the persistent registry; scope is chosen per execution (one, some, or all member
 
 ## Workspace profile format
 
-Write this to the profile location for the topology. It is the helper document:
-it tells any future run exactly how this workspace is wired and how to run it.
+The profile is **`workspace.json`** — schema `orchestration/workspace@1`, the exact
+shape `lib/schema.mjs` validates and `lib/detect.mjs` emits. It is the single source
+of truth every later step reads. A human-readable `workspace.md` is **rendered from
+it** by `lib/profile.mjs render`; do not hand-edit the `.md`, and do not parse it
+programmatically.
 
+```jsonc
+{
+  "schema": "orchestration/workspace@1",
+  "generated": "<ISO-8601>",
+  "topology": "single-repo | monorepo | multi-repo",
+  "workspace_root": "<absolute path>",
+  "members": [{
+    "id": "<slug>",
+    "path": "<relative to workspace_root; '.' for single-repo>",
+    "git": true,
+    "default_branch": "<branch | null>",
+    "stack": "<e.g. NestJS/TS | Express/TS | Python | infra (docker-compose)>",
+    "claude_md": "present | absent",
+    "role": "chuck-backend-engineer | chuck-frontend-engineer | in-scope:no-matching-agent | out-of-scope",
+    "role_reason": "<required when role is in-scope:no-matching-agent or out-of-scope>",
+    "gates": { "convention": "<cmd|null>", "lint": "<cmd|null>",
+               "test": "<cmd|null>", "build": "<cmd|null>" },   // null = no gate (never fabricated)
+    "reports_dir": "<path where this member's reports go>",
+    "notes": ["<detected per-member gotcha>", "..."]
+  }],
+  "decisions_needed": [{ "member": "<id>", "question": "<...>", "recommended": "<default>", "options": ["..."] }],
+  "defaults": { "architect": "default-on", "parallelism": "opt-in", "human_gate": "per-task" }
+}
 ```
-# Orchestration Workspace Profile
-GENERATED: <ISO-8601> by /orchestrate-setup
-TOPOLOGY: single-repo | monorepo | multi-repo
-WORKSPACE_ROOT: <absolute path>
-PROFILE_LOCATION: <path to this file>
 
-## Members
-- id: <slug>
-  path: <relative to WORKSPACE_ROOT>            # "." for single-repo
-  git: <true|false>   default_branch: <branch>
-  stack: <e.g. NestJS/TS | Express/TS | Python | infra>
-  claude_md: <present | absent>                  # if absent, note the consequence
-  role: <chuck-backend-engineer | chuck-frontend-engineer | out-of-scope: <reason>>
-  gates:
-    convention: <command | none>
-    lint: <command | none>
-    test: <command | none>
-    build: <command | none>
-  reports_dir: <path where this member's reports go>
-  notes: <per-member gotchas the specialists must respect>
-
-## Active roles
-<list of chuck-* engineer roles live in this workspace; others are dormant>
-
-## Defaults
-architect: default-on | per-ticket-ask
-parallelism: opt-in | auto-when-independent
-human_gate: per-task | per-bundle
-
-## Per-case handling
-| Case | Rule |
-|------|------|
-| <member or situation> | <what the workflow does about it> |
-
-## How to run
-<concrete, copy-pasteable invocation notes for THIS workspace — which directory to
-invoke from, how scope is chosen per run, anything non-obvious.>
-```
+`decisions_needed` is populated by detection and emptied at finalize (once the user's
+answers are applied via `lib/profile.mjs finalize`). The rendered `.md` derives
+`Active roles`, `Per-case handling` (from member `notes` + flagged roles), and
+`How to run` automatically — they are not stored.
 
 ## Per-run scope resolution
 
@@ -218,6 +252,24 @@ Once the profile exists, each `/orchestrate` invocation:
 - **reviewers** scope the diff to the task's member with that member's baseline
   (`git -C <member-path> diff <baseline>..HEAD -- <files>`), and for cross-member
   bundles check interface consistency *across* members during global synthesis.
+
+## Members with no matching agent
+
+Some members are worth tracking in the registry even though no active specialist role
+fits their stack (Python ML/data research, pure infra/compose, an unsupported
+language). The user may keep these **in scope, flagged** rather than excluding them
+(`role: in-scope: no-matching-agent (<reason>)`). Such a member:
+
+- **is a valid ticket target** — it appears in per-run scope resolution like any other;
+- **has no implementing specialist** and usually **no gates** (`none` across the board);
+- **must be flagged before work is assigned.** When a run's scope includes a flagged
+  member, `/orchestrate` states up front that no `chuck-*` role fits it and no gates
+  exist to verify changes, and asks the user how to proceed (handle it manually, assign
+  the closest engineer as a best-effort with reduced confidence, or drop it from this
+  run) rather than silently assigning a specialist that does not fit.
+
+Record the flag and this handling in the profile's `Per-case handling` table so every
+later run inherits it.
 
 ## Profile freshness
 

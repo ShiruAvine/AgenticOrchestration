@@ -93,7 +93,7 @@ OPEN QUESTIONS (for user):
 STATUS: ready_for_review | blocked (needs clarification)
 ```
 
-> Note: the orchestrator later writes a `run.md` **run manifest** into this same bundle folder to track execution state. Do not create or overwrite `run.md` — it is the orchestrator's, not yours.
+> Note: the orchestrator later writes a `run.json` **run manifest** into this same bundle folder to track execution state. Do not create or overwrite `run.json` — it is the orchestrator's, not yours.
 
 ### `task-NN-<slug>.md` (per-task contract) format
 

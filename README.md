@@ -21,7 +21,8 @@ This repo is a **Claude Code marketplace** (`agentic-orchestration`) hosting one
 | `/orchestrate-setup` | Slash command for Phase 0: detect topology, confirm with the user, write the workspace profile. |
 | `/orchestrate` | Slash command to run a ticket through the full workflow. |
 | `ORCHESTRATION.md` | The generic workflow, contract template, hard gates, run manifest, and resume rules. |
-| `WORKSPACE.md` | Topology definitions, detection algorithm, and the workspace-profile template. |
+| `WORKSPACE.md` | Topology definitions, the detection algorithm (spec for `lib/detect.mjs`), and the workspace-profile JSON schema. |
+| `lib/` | Zero-dependency node scripts that make the mechanical parts deterministic: `detect.mjs` (topology + member profiling → `workspace.json`), `profile.mjs` (validate/finalize/render), `manifest.mjs` (run state), `gates.mjs` (run a member's gates), `schema.mjs` (validators). |
 | `plan-review-rubric`, `code-review-rubric` | Deterministic per-task review checklists. |
 
 ## Install
@@ -54,9 +55,9 @@ The orchestrator runs against a **workspace**, which is *not* assumed to be one 
 
 | Topology | What it is | Profile location (personal, gitignored) |
 |----------|-----------|------------------|
-| `single-repo` | one repo, one project | `<repo>/.claude/orchestration/workspace.local.md` |
-| `monorepo` | one repo, many sub-projects | `<repo>/.claude/orchestration/workspace.local.md` |
-| `multi-repo` | a non-repo parent folder of independent repos opened together | `<workspace-root>/.orchestration/workspace.md` |
+| `single-repo` | one repo, one project | `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`) |
+| `monorepo` | one repo, many sub-projects | `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`) |
+| `multi-repo` | a non-repo parent folder of independent repos opened together | `<workspace-root>/.orchestration/workspace.json` (+ rendered `.md`) |
 
 Run `/orchestrate-setup` once per workspace (or whenever it changes). It dispatches `chuck-workspace-analyst` to detect the topology and profile every member deterministically, asks you **only the crucial decisions** (ambiguous topology, out-of-scope exclusions, missing `CLAUDE.md`, ambiguous role), and writes the profile — a helper document recording each member's stack, gate commands, role, and any per-case handling (e.g. "this member has no lint script — skip that gate"). Setup also adds the `.gitignore` entries that keep the profile and reports personal. After that, `/orchestrate` reads the profile and tags each task with an `ASSIGNED_REPO`, so one run can span multiple repos when a feature crosses them.
 

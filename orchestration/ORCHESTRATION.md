@@ -37,7 +37,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 ## Orchestrator workflow
 
 0. **Phase 0 — Establish the workspace.** Before anything else, know what you are pointed at.
-   - **Load the workspace profile** (a personal, gitignored file). Look for it at `./.orchestration/workspace.md` (multi-repo) or `./.claude/orchestration/workspace.local.md` (single-repo / monorepo).
+   - **Load the workspace profile** (a personal, gitignored file). Read `workspace.json` — the source of truth, at `./.orchestration/workspace.json` (multi-repo) or `./.claude/orchestration/workspace.local.json` (single-repo / monorepo) — not the rendered `.md`.
    - **If no profile exists**, run `/orchestrate-setup` first (detect topology → confirm with user → write profile). Do not proceed without one — guessing topology is what drives drift. See `WORKSPACE.md`.
    - **If a profile exists**, read it. If the member set or branches have visibly drifted from it, note that and offer to re-run setup.
    - **Resolve this run's scope.** From the profile's in-scope members, determine which the ticket touches — by the user's explicit statement, by inference, or by asking. The active member set may be one member, several, or all. Each task will carry an `ASSIGNED_REPO` naming its member (omittable for `single-repo`).
@@ -56,12 +56,12 @@ Specialists are generic. They learn each project's specifics at runtime by readi
    - **Skip-architect path** → run "Direct dispatch" below to draft a single inline contract.
 
 5. **Engineering dispatch — sequential per-task gate.** Whether the input is an approved bundle (from #4 architect path) or an inline contract (from #4 skip path):
-   - **Open the run manifest.** Before dispatching anything, create the run manifest (see "Run manifest" below) and capture a **per-member baseline** (`git -C <member-path> rev-parse HEAD`) for every active member. The manifest is the run's source of truth for status and diff baselines — update it at every transition so the run is resumable.
+   - **Open the run manifest.** Before dispatching anything, create it with `node lib/manifest.mjs init <run.json> <spec.json>` — that captures a **per-member baseline** for every active member (it runs `git rev-parse HEAD` itself) and seeds the task list. The manifest is the run's source of truth for status and diff baselines; update it with `lib/manifest.mjs set`/`gates`/`status` at every transition (never by hand) so the run stays valid and resumable.
    - **Confirm execution order with the user once.** The architect's plan provides the order; the user can adjust. The dependency graph defines what *could* run in parallel — by default it does not.
    - **For each task in order** (skip any the manifest already marks `done`):
      1. **Dispatch** the matching engineering specialist (`chuck-frontend-engineer` or `chuck-backend-engineer`) via the `Agent` tool. For task-file dispatch, pass the task file path AND the bundle path. For inline dispatch, pass the contract directly. Always pass the task's `ASSIGNED_REPO` (the member it lives in) so the engineer operates in the right repo and uses that member's gates from the profile. Mark the task `in_progress` in the manifest.
      2. **Read the specialist's report** (in the assigned member's `reports_dir`, `.../chuck-<agent>/<ISO-timestamp>.md`). Record its path in the manifest.
-     3. **Independently verify the gates.** Do NOT trust the engineer's self-reported `CHECKS`. Run the `ASSIGNED_REPO` member's gate commands yourself (from the profile, inside the member's path) and record the **observed** result in the manifest. Prefer a non-mutating form of each gate; if only a mutating form exists (e.g. `lint --fix`), any changes it produces become part of this task's diff and are reviewed. The hard gate keys off *your observed* result, not the report. A self-report/observed mismatch is itself a finding to surface.
+     3. **Independently verify the gates.** Do NOT trust the engineer's self-reported `CHECKS`. Run `node lib/gates.mjs <workspace.json> <ASSIGNED_REPO>` — it executes that member's recorded gate commands in the member's path and emits observed `pass|fail|n/a` per gate (it auto-uses a non-mutating variant: `--fix` dropped, `--write`→`--check`; pass `--mutate` if you deliberately want the mutating form, whose edits then join this task's diff). Pipe the `observed` block into `lib/manifest.mjs gates <run.json> <task-id> '<json>'`. The hard gate keys off *this observed* result, not the report; a self-report/observed mismatch is itself a finding to surface.
      4. **Dispatch `chuck-code-reviewer` for this single task.** Pass the task file path, the engineer's report path, the task's `ASSIGNED_REPO`, the manifest's observed gate results, and the diff scope — scoped to that member with the manifest's baseline (`git -C <member-path> diff <task-baseline>..HEAD` covering only this task's files). Reviewer runs `code-review-rubric` once and writes a review to the member's `reports_dir/chuck-code-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`. Record the review path + verdict in the manifest.
      5. **Handle the verdict internally:** `approve` → proceed to the next sub-step; `revise` → build a fix contract from the critical findings and re-dispatch the engineer (cap 2 rounds; increment `fix_rounds` in the manifest); `reject` → surface to the user immediately, do not patch.
      6. **User verification gate.** Surface to the user: what changed (file list + diff summary), the observed gate results, the reviewer's findings, and the verdict. Wait for the user to ✅ approve (mark the task `done` in the manifest, continue to next task), ❌ request revisions (build a fix contract from the user's feedback and re-dispatch the engineer), or pause. **Do not start the next task until the user explicitly verifies.**
@@ -79,36 +79,28 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 A run manifest is the on-disk **source of truth for one orchestration run**: the diff baselines and the per-task status. The orchestrator creates it at the start of engineering dispatch and updates it at every transition. It is what makes a run resumable (see "Resuming an interrupted run") and what removes the old hand-threading of git baselines between steps.
 
-**Location:** architect path → `<bundle>/run.md` (alongside `plan.md`). Skip-architect path → `<workspace-reports>/runs/<ISO-timestamp>/run.md`, with the inline contract saved beside it as `contract.md`. (`<workspace-reports>` is `<repo>/.claude/reports` for single-repo/monorepo or `<workspace-root>/.orchestration/reports` for multi-repo.) The manifest lives in the gitignored reports tree, so it is personal and never committed.
+**Location:** architect path → `<bundle>/run.json` (alongside `plan.md`). Skip-architect path → `<workspace-reports>/runs/<ISO-timestamp>/run.json`, with the inline contract saved beside it as `contract.md`. (`<workspace-reports>` is `<repo>/.claude/reports` for single-repo/monorepo or `<workspace-root>/.orchestration/reports` for multi-repo.) The manifest lives in the gitignored reports tree, so it is personal and never committed.
 
-**Format:**
+**Format and tooling.** The manifest is **`run.json`** (schema `orchestration/run@1`,
+validated by `lib/schema.mjs`). **Do not hand-write or hand-edit it** — use
+`lib/manifest.mjs`, which re-validates on every mutation so the file is always
+schema-valid and resumable:
 
 ```
-RUN: <ISO-timestamp>
-TICKET: <one-liner>
-TOPOLOGY: single-repo | monorepo | multi-repo
-BUNDLE: <bundle path | "inline">
-STATUS: planning | executing | complete | blocked
-UPDATED: <ISO-timestamp>
-
-ACTIVE_MEMBERS:
-  - <member-id>: path=<rel-path> baseline=<git sha captured at run start>
-
-EXECUTION_ORDER: [task-01-<slug>, task-02-<slug>, ...]
-
-TASKS:
-  - id: task-NN-<slug>
-    repo: <member-id>
-    status: not_started | in_progress | gates_verified | awaiting_review | awaiting_verification | done | blocked
-    engineer_report: <path | —>
-    gates_observed: { convention: pass|fail|n/a, lint: …, test: …, build: … }   # the ORCHESTRATOR's run, not the engineer's claim
-    review: <path | —>
-    verdict: approve | revise | reject | —
-    user_verified: yes | no
-    fix_rounds: <int>
-
-INTEGRATION_REVIEW: <path | not_run>
+node lib/manifest.mjs init  <run.json> <spec.json>            # creates it; captures per-member git baselines
+node lib/manifest.mjs set   <run.json> <task-id> status=done verdict=approve user_verified=true
+node lib/manifest.mjs gates <run.json> <task-id> '{"convention":"pass","lint":"pass","test":"pass","build":"pass"}'
+node lib/manifest.mjs status <run.json> complete
+node lib/manifest.mjs show  <run.json>                        # summary + "RESUME AT: <first not-done task>"
 ```
+
+`init` takes a spec `{ ticket, topology, bundle, workspace_root, active_members:[{id,path}],
+execution_order:[…], tasks:[{id,repo}] }` and fills the rest (baselines via git, all
+tasks `not_started`). The shape it maintains: top-level `run/ticket/topology/bundle/
+status/updated`, `active_members[].baseline`, `execution_order`, `tasks[]` (each with
+`status`, `engineer_report`, `review`, `verdict`, `gates_observed` = the ORCHESTRATOR's
+observed result not the engineer's claim, `user_verified`, `fix_rounds`), and
+`integration_review`.
 
 ## Planning phase (architect path)
 
@@ -160,7 +152,7 @@ Hard gates exist regardless of project. The specific checks to run are project-d
 
 Work is checkpointed **on disk**, so a run can stop mid-execution (context limit, the user steps away, a crash) and resume without redoing finished work. On re-invocation, reconstruct state rather than starting over:
 
-- **The run manifest is the primary checkpoint.** If a `run.md` exists for the run, read it: its `STATUS`, per-task `status`/`verdict`/`user_verified`, and per-member `baseline` tell you exactly where to resume and what diff baselines to use. Resume at the first task not marked `done`. Do **not** re-dispatch tasks already `done`. The manifest replaces guessing — only fall back to scanning the reports tree if no manifest exists (older runs).
+- **The run manifest is the primary checkpoint.** If a `run.json` exists for the run, run `node lib/manifest.mjs show <run.json>`: it prints each task's `status`/`verdict`/`user_verified`, the per-member baselines, and an explicit `RESUME AT: <first not-done task>` pointer. Resume there; do **not** re-dispatch tasks already `done`. The manifest replaces guessing — only fall back to scanning the reports tree if no manifest exists (older runs).
 - **Setup interrupted** → a leftover `workspace.*.draft` is the checkpoint. `/orchestrate-setup` resumes from it (see that command).
 - **Planning interrupted** (no manifest yet — it is created at the start of engineering dispatch) → if a bundle exists but has no plan-review next to it, resume at plan review; if it has an approved review but no manifest, resume at engineering dispatch (which opens the manifest).
 - **Validate against reality.** The manifest is the source of truth for *intent*, but verify the working tree matches: a task marked `done` whose diff has vanished, or a `baseline` that no longer exists, is a conflict to **surface to the user**, not to silently re-run.

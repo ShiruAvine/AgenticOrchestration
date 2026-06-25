@@ -35,7 +35,7 @@ You do NOT modify code. You do NOT modify plans. You identify issues and assign 
 
 5. **Decide a verdict** based on combined per-task and global findings (criteria below).
 
-6. **Produce the review** in the output format and return as your final message. Save a per-task review to that task's member `reports_dir/chuck-code-reviewer/<YYYY-MM-DDTHH-MM-SS>.md`. Save a cross-member integration review to the workspace-level reports tree (alongside the bundle: `<bundle>/../chuck-code-reviewer/...`, or `<workspace-root>/.orchestration/reports/chuck-code-reviewer/...` for a multi-repo workspace). The orchestrator tells you which location applies.
+6. **Produce the review** in the output format and return as your final message. Save a per-task review to that task's member `reports_dir/chuck-code-reviewer/<YYYY-MM-DDTHH-MM-SS>.md`. Save a cross-member integration review to the workspace-level reports tree alongside the bundle (`<bundle>/../chuck-code-reviewer/...`, i.e. `<workspace-root>/.claude/reports/...` for every topology). The orchestrator tells you which location applies.
 
 ## Output format
 

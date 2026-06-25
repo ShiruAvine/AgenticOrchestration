@@ -17,9 +17,9 @@ $ARGUMENTS
    definitions, the `lib/` tooling, the profile schema, role heuristics, and profile
    location rules. (Fallbacks: `.claude/WORKSPACE.md`, `~/.claude/WORKSPACE.md`.)
 
-2. **Check for an existing profile or an interrupted draft.** Look at the profile
-   locations (`./.orchestration/workspace.json` for multi-repo;
-   `./.claude/orchestration/workspace.local.json` for single-repo / monorepo).
+2. **Check for an existing profile or an interrupted draft.** Look under
+   `./.claude/orchestration/` (`workspace.json` for multi-repo;
+   `workspace.local.json` for single-repo / monorepo).
    - A finalized profile present → treat this run as a **refresh**: pass it to the
      analyst so it can diff against current state and show what changed.
    - A leftover `workspace*.json.draft` (and no finalized profile) → a prior setup was
@@ -59,7 +59,7 @@ $ARGUMENTS
    personal gets committed:
    - single-repo / monorepo: add `.claude/orchestration/*.local.*` and
      `.claude/reports/` to the repo's `.gitignore`.
-   - multi-repo: the parent's `.orchestration/` is un-tracked already; add
+   - multi-repo: the parent's `.claude/` is un-tracked already (non-repo root); add
      `.claude/reports/` to each in-scope **member** repo's `.gitignore`.
 
 8. **Report back** to the user: the topology, the in-scope member table (id · path ·

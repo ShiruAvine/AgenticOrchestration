@@ -57,7 +57,7 @@ The orchestrator runs against a **workspace**, which is *not* assumed to be one 
 |----------|-----------|------------------|
 | `single-repo` | one repo, one project | `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`) |
 | `monorepo` | one repo, many sub-projects | `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`) |
-| `multi-repo` | a non-repo parent folder of independent repos opened together | `<workspace-root>/.orchestration/workspace.json` (+ rendered `.md`) |
+| `multi-repo` | a non-repo parent folder of independent repos opened together | `<workspace-root>/.claude/orchestration/workspace.json` (+ rendered `.md`) |
 
 Run `/orchestrate-setup` once per workspace (or whenever it changes). It dispatches `chuck-workspace-analyst` to detect the topology and profile every member deterministically, asks you **only the crucial decisions** (ambiguous topology, out-of-scope exclusions, missing `CLAUDE.md`, ambiguous role), and writes the profile — a helper document recording each member's stack, gate commands, role, and any per-case handling (e.g. "this member has no lint script — skip that gate"). Setup also adds the `.gitignore` entries that keep the profile and reports personal. After that, `/orchestrate` reads the profile and tags each task with an `ASSIGNED_REPO`, so one run can span multiple repos when a feature crosses them.
 
@@ -83,7 +83,7 @@ A minimal project `CLAUDE.md` section looks like:
 - Lint / tests: <commands>
 ```
 
-Work products are written outside the plugin: plan bundles and plan/integration reviews go to the workspace-level reports tree (the repo's `.claude/reports/...`, or `<workspace-root>/.orchestration/reports/...` for a multi-repo workspace), while engineer reports and per-task code reviews go to each touched member's own `.claude/reports/...`.
+Work products are written outside the plugin: plan bundles and plan/integration reviews go to the workspace-level reports tree (`<workspace-root>/.claude/reports/...` for every topology), while engineer reports and per-task code reviews go to each touched member's own `.claude/reports/...`.
 
 ## How runs are tracked & gated
 

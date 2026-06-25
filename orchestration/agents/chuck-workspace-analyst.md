@@ -48,8 +48,8 @@ to re-implement detection by hand.
    changes a disposition, add a decision. Never overwrite the script's facts silently.
 
 3. **Write the draft.** Save the JSON **verbatim** to the draft path for the topology:
-   - single-repo / monorepo → `<repo>/.claude/orchestration/workspace.local.json.draft`
-   - multi-repo → `<workspace-root>/.orchestration/workspace.json.draft`
+   - single-repo / monorepo → `<workspace-root>/.claude/orchestration/workspace.local.json.draft`
+   - multi-repo → `<workspace-root>/.claude/orchestration/workspace.json.draft`
 
    The `.draft` is a durable checkpoint. If one already exists (interrupted setup),
    read it first: carry over any roles/answers already resolved there, refresh facts

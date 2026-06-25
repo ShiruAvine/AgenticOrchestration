@@ -37,7 +37,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 ## Orchestrator workflow
 
 0. **Phase 0 — Establish the workspace.** Before anything else, know what you are pointed at.
-   - **Load the workspace profile** (a personal, gitignored file). Read `workspace.json` — the source of truth, at `./.orchestration/workspace.json` (multi-repo) or `./.claude/orchestration/workspace.local.json` (single-repo / monorepo) — not the rendered `.md`.
+   - **Load the workspace profile** (a personal, gitignored file). Read `workspace.json` — the source of truth, always under `<workspace-root>/.claude/orchestration/` (`workspace.json` for multi-repo, `workspace.local.json` for single-repo / monorepo) — not the rendered `.md`.
    - **If no profile exists**, run `/orchestrate-setup` first (detect topology → confirm with user → write profile). Do not proceed without one — guessing topology is what drives drift. See `WORKSPACE.md`.
    - **If a profile exists**, read it. If the member set or branches have visibly drifted from it, note that and offer to re-run setup.
    - **Resolve this run's scope.** From the profile's in-scope members, determine which the ticket touches — by the user's explicit statement, by inference, or by asking. The active member set may be one member, several, or all. Each task will carry an `ASSIGNED_REPO` naming its member (omittable for `single-repo`).
@@ -79,7 +79,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 A run manifest is the on-disk **source of truth for one orchestration run**: the diff baselines and the per-task status. The orchestrator creates it at the start of engineering dispatch and updates it at every transition. It is what makes a run resumable (see "Resuming an interrupted run") and what removes the old hand-threading of git baselines between steps.
 
-**Location:** architect path → `<bundle>/run.json` (alongside `plan.md`). Skip-architect path → `<workspace-reports>/runs/<ISO-timestamp>/run.json`, with the inline contract saved beside it as `contract.md`. (`<workspace-reports>` is `<repo>/.claude/reports` for single-repo/monorepo or `<workspace-root>/.orchestration/reports` for multi-repo.) The manifest lives in the gitignored reports tree, so it is personal and never committed.
+**Location:** architect path → `<bundle>/run.json` (alongside `plan.md`). Skip-architect path → `<workspace-reports>/runs/<ISO-timestamp>/run.json`, with the inline contract saved beside it as `contract.md`. (`<workspace-reports>` is `<workspace-root>/.claude/reports` for every topology.) The manifest lives in the gitignored reports tree, so it is personal and never committed.
 
 **Format and tooling.** The manifest is **`run.json`** (schema `orchestration/run@1`,
 validated by `lib/schema.mjs`). **Do not hand-write or hand-edit it** — use
@@ -104,7 +104,7 @@ observed result not the engineer's claim, `user_verified`, `fix_rounds`), and
 
 ## Planning phase (architect path)
 
-1. **Dispatch chuck-architect** with the user's request, any constraints, and the active member set (with each member's path + gate commands from the profile). Architect reads each active member, explores relevant code, decomposes the work into tasks (each assigned to a specialist *and* an `ASSIGNED_REPO` member, with order and dependencies), and writes a bundle. The bundle is workspace-level: for single-repo / monorepo it goes to `<repo>/.claude/reports/chuck-architect/<ISO-timestamp>/`; for multi-repo (parent folder, not a repo) it goes to `<workspace-root>/.orchestration/reports/chuck-architect/<ISO-timestamp>/`. Bundle contains `plan.md` (master) plus one `task-NN-<slug>.md` per task. Plan-review reports live alongside the bundle in the same workspace-level reports tree; engineer and code-review reports live in each touched member's own `reports_dir`.
+1. **Dispatch chuck-architect** with the user's request, any constraints, and the active member set (with each member's path + gate commands from the profile). Architect reads each active member, explores relevant code, decomposes the work into tasks (each assigned to a specialist *and* an `ASSIGNED_REPO` member, with order and dependencies), and writes a bundle. The bundle is workspace-level: it goes to `<workspace-root>/.claude/reports/chuck-architect/<ISO-timestamp>/` (uniform across topologies). Bundle contains `plan.md` (master) plus one `task-NN-<slug>.md` per task. Plan-review reports live alongside the bundle in the same workspace-level reports tree; engineer and code-review reports live in each touched member's own `reports_dir`.
 
 2. **Dispatch chuck-plan-reviewer** with the bundle path. Reviewer runs the `plan-review-rubric` skill once per task (deterministic per-task checks) plus a global synthesis pass (cross-task issues), and writes a single review file to `.claude/reports/chuck-plan-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`.
 

@@ -37,7 +37,7 @@ The orchestrator gives you the **active member set** for this ticket (from the w
 
 5. **Produce the bundle** in the structure below.
 
-6. **Write to disk.** The bundle is workspace-level. For single-repo / monorepo, save it to `<repo>/.claude/reports/chuck-architect/<YYYY-MM-DDTHH-MM-SS>/`. For a multi-repo workspace (parent folder, not a repo), save it to `<workspace-root>/.orchestration/reports/chuck-architect/<YYYY-MM-DDTHH-MM-SS>/`. The orchestrator tells you which location applies. Return the bundle path as your final message along with a one-paragraph summary.
+6. **Write to disk.** The bundle is workspace-level: save it to `<workspace-root>/.claude/reports/chuck-architect/<YYYY-MM-DDTHH-MM-SS>/` (uniform across topologies). The orchestrator gives you the workspace root. Return the bundle path as your final message along with a one-paragraph summary.
 
 ## Bundle structure
 

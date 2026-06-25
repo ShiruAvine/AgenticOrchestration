@@ -36,7 +36,7 @@ You do NOT rewrite the plan or its tasks — you identify issues. You are delibe
 
 5. **Decide a verdict** based on combined per-task and global findings (criteria below).
 
-6. **Produce the review** in the output format below. Save it alongside the bundle in the same workspace-level reports tree (`<bundle>/../chuck-plan-reviewer/<YYYY-MM-DDTHH-MM-SS>.md`, i.e. `<repo>/.claude/reports/...` for single-repo/monorepo or `<workspace-root>/.orchestration/reports/...` for multi-repo) and return as your final message.
+6. **Produce the review** in the output format below. Save it alongside the bundle in the same workspace-level reports tree (`<bundle>/../chuck-plan-reviewer/<YYYY-MM-DDTHH-MM-SS>.md`, i.e. `<workspace-root>/.claude/reports/...` for every topology) and return as your final message.
 
 ## Output format
 

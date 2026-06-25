@@ -22,10 +22,15 @@ it to a gitignored location and adds the necessary `.gitignore` entries:
   (source of truth) plus a generated `workspace.local.md` view. The `.local.*` suffix
   marks them personal; setup adds `.claude/orchestration/*.local.*` + `.claude/reports/`
   to the repo's `.gitignore`.
-- **multi-repo:** `<workspace-root>/.orchestration/workspace.json` (source of truth)
-  plus a generated `workspace.md` view. The parent folder is not a repo, so it is
-  inherently un-shared; setup still adds `.claude/reports/` to each in-scope **member**
-  repo's `.gitignore`, since engineer/review reports land there.
+- **multi-repo:** `<workspace-root>/.claude/orchestration/workspace.json` (source of
+  truth) plus a generated `workspace.md` view. The parent folder is not a repo, so it
+  is inherently un-shared (no `.local` suffix needed); setup still adds `.claude/reports/`
+  to each in-scope **member** repo's `.gitignore`, since engineer/review reports land there.
+
+The location pattern is **uniform**: the profile always lives at
+`<workspace-root>/.claude/orchestration/`, and workspace-level work products always at
+`<workspace-root>/.claude/reports/` — the only difference across topologies is the
+`.local` filename suffix (used inside a repo, where it must be gitignored).
 
 The **`.json` is the machine source of truth** that every later step reads; the `.md`
 is a human-readable view rendered from it by `lib/profile.mjs`. Never parse the `.md`.
@@ -76,11 +81,12 @@ workflow). Each member repo is autonomous — its own history, branch, `CLAUDE.m
 and `.claude/`.
 
 - **Members:** each child repo the user marks in scope.
-- **Profile location:** `<workspace-root>/.orchestration/workspace.json` (+ rendered `.md`)
-  (the parent is not a repo, so the profile lives in a plain folder at the root and
-  is inherently un-shared).
-- **Reports:** each member writes to **its own** `<member>/.claude/reports/...`
-  (setup gitignores that path in each in-scope member).
+- **Profile location:** `<workspace-root>/.claude/orchestration/workspace.json` (+ rendered `.md`)
+  (the parent is not a repo, so it is inherently un-shared — no `.local` suffix).
+- **Reports:** workspace-level products (bundles, plan/integration reviews, run
+  manifests) → `<workspace-root>/.claude/reports/...`; each member's engineer/code-review
+  reports → its **own** `<member>/.claude/reports/...` (setup gitignores that path in
+  each in-scope member).
 - **Diff baseline:** one **per member**, in that member's repo.
 
 ## Tooling (`lib/`)

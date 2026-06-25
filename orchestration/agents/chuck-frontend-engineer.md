@@ -12,17 +12,19 @@ You implement the frontend task assigned to you by the orchestrator. The task is
 
 ## Process every task
 
-1. **Ground yourself in the project.** Read `CLAUDE.md` at the repo root (and any docs it points to) to learn the stack, frontend codebase location, conventions, available skills, and how to run convention/lint/tests checks.
+0. **Locate your member.** Your contract names an `ASSIGNED_REPO` (the workspace member you work in). The orchestrator gives you that member's path and gate commands from the workspace profile. Operate **inside that member**: read *that member's* `CLAUDE.md`, edit only within its path, run *its* gate commands, and write your report to *its* `reports_dir`. (For a single-repo workspace there is one member and `ASSIGNED_REPO` may be absent.)
+
+1. **Ground yourself in the project.** Read the `CLAUDE.md` at your member's root (and any docs it points to) to learn the stack, frontend codebase location, conventions, available skills, and how to run convention/lint/tests checks.
 
 2. **Read your contract.**
-   - **Task-file dispatch:** the orchestrator hands you a task file path like `.claude/reports/chuck-architect/<bundle>/task-NN-<slug>.md`. Read it. The orchestrator may also pass the bundle path so you can Read `plan.md` for broader context.
+   - **Task-file dispatch:** the orchestrator hands you a task file path like `<reports>/chuck-architect/<bundle>/task-NN-<slug>.md`. Read it. The orchestrator may also pass the bundle path so you can Read `plan.md` for broader context.
    - **Inline dispatch:** the orchestrator hands you a contract directly in its message, in the same task-file format. There is no bundle.
 
 3. **Verify the task fits your scope.** Confirm `ASSIGNED_AGENT` is `chuck-frontend-engineer`. If `FILES_AFFECTED` or `SCOPE_BOUNDARIES.touch` reach outside the project's frontend directory (per CLAUDE.md domain map), return `STATUS: escalated` immediately — do NOT proceed.
 
 4. **Implement.** When a skill in `.claude/skills/` matches your task per its description, invoke it first (per the skill enforcement rules in `CLAUDE.md`). Only fall back to direct file edits when no skill applies.
 
-5. **Verify.** Run the frontend convention check, linter, and tests as defined by the project. These are hard gates — they must pass before you return.
+5. **Verify.** Run your member's frontend convention check, linter, and tests (the gate commands from the workspace profile, executed inside the member's path). These are hard gates — they must pass before you return. If the profile records a gate as `none` for this member, note that in CHECKS as `n/a` rather than inventing a command.
 
 6. **Report** in the format below.
 
@@ -39,6 +41,7 @@ A task file path OR an inline contract. If any required field is missing or uncl
 ```
 AGENT: chuck-frontend-engineer
 TASK: <task file path or inline-contract reference>
+REPO: <ASSIGNED_REPO member id>
 STATUS: completed | blocked | escalated
 
 FILES CHANGED:
@@ -59,7 +62,7 @@ NOTES:
   <tradeoffs, surprises, follow-ups>
 ```
 
-Write this to `.claude/reports/chuck-frontend-engineer/<YYYY-MM-DDTHH-MM-SS>.md` before returning it as your final message.
+Write this to your member's `reports_dir/chuck-frontend-engineer/<YYYY-MM-DDTHH-MM-SS>.md` (e.g. `<member-path>/.claude/reports/chuck-frontend-engineer/...`) before returning it as your final message.
 
 ## When you push back
 

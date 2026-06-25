@@ -1,8 +1,8 @@
 {
   "name": "orchestration",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "displayName": "Agentic Orchestration",
-  "description": "Generic orchestration framework. The main session acts as orchestrator and dispatches work to architect, engineer, and reviewer specialists. Specialists are project-agnostic and learn each project's stack and conventions from its CLAUDE.md at runtime.",
+  "description": "Generic orchestration framework. The main session acts as orchestrator and dispatches work to architect, engineer, and reviewer specialists. A Phase 0 analyst agent deterministically detects the workspace topology (single-repo, monorepo, or a parent folder of independent repos), profiles each member, and records a personal, gitignored workspace profile so runs are deterministic and your config never gets committed. Each run keeps an on-disk manifest (baselines + per-task status) so interrupted runs resume instead of restarting, and gates are independently re-run by the orchestrator rather than trusted from the engineer's self-report. Specialists are project-agnostic and learn each member's stack and conventions from its CLAUDE.md at runtime.",
   "author": {
     "name": "ShiruAvine"
   },
@@ -15,6 +15,9 @@
     "subagents",
     "workflow",
     "architect",
-    "code-review"
+    "code-review",
+    "monorepo",
+    "multi-repo",
+    "workspace"
   ]
 }

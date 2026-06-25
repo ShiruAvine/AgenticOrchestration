@@ -9,10 +9,11 @@ This skill provides a deterministic walkthrough for reviewing the code changes t
 
 ## Inputs
 
-- `<task-contract>`: path to the task file (or inline contract text)
-- `<engineer-report>`: path to the engineer's report (`.claude/reports/chuck-{frontend,backend}-engineer/<ts>.md`)
-- `<diff-scope>`: git range or working-tree scope to inspect (provided by the reviewer; commonly `git diff <baseline>..HEAD -- <paths>`)
-- The project's `CLAUDE.md` at the repo root (domain map and conventions)
+- `<task-contract>`: path to the task file (or inline contract text); names the `ASSIGNED_REPO` member
+- `<engineer-report>`: path to the engineer's report (in the member's `reports_dir/chuck-{frontend,backend}-engineer/<ts>.md`)
+- `<diff-scope>`: git range scoped to the task's member (provided by the reviewer; commonly `git -C <member-path> diff <baseline>..HEAD -- <paths>`)
+- `<observed-gates>`: the gate results the orchestrator ran and recorded in the run manifest (authoritative; cross-check the engineer's self-report against these)
+- The `ASSIGNED_REPO` member's `CLAUDE.md` (domain map and conventions)
 
 ## Steps
 
@@ -37,10 +38,11 @@ Check every changed file against `SCOPE_BOUNDARIES.touch` and `do-not-touch`:
 Read the project's `CLAUDE.md` for domain-specific conventions. For each changed file in the diff:
 
 - Project conventions respected (e.g. Identity/Display split on backend, OnPush/signals on frontend, barrel exports — whatever the project mandates).
-- Engineer's report claims `convention check: pass`. Verify the claim is plausible from the diff (no obvious violations visible).
+- Cross-check the engineer's self-reported `CHECKS` against the **observed gate results** the orchestrator recorded in the run manifest. The observed result is authoritative.
 
 Convention violation visible in diff → **major** (or **critical** if it breaks an invariant).
-Engineer claims pass but diff contradicts → **critical**.
+Engineer self-reports `pass` but the observed gate result is `fail` (or the diff contradicts the claim) → **critical**.
+Observed gate result is `fail` for any gate → **critical** (the work is not mergeable until it passes).
 
 ### 4. Correctness
 

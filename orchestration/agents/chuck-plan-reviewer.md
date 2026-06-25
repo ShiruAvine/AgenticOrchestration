@@ -30,12 +30,13 @@ You do NOT rewrite the plan or its tasks — you identify issues. You are delibe
    - **Cross-task contract consistency:** If task A produces an interface that task B consumes, do A's `INTERFACE` outputs match B's `INTERFACE` inputs?
    - **Dependency graph:** Any cycle? Orphan task (no path to root)? A task that should depend on another but doesn't? Tasks marked parallel that actually conflict?
    - **Agent allocation:** Does the split between frontend and backend match what the master plan describes?
+   - **Member allocation:** Does each task's `ASSIGNED_REPO` name a real in-scope member, and do its `FILES_AFFECTED` actually live in that member? Any task whose files cross member boundaries (should have been split)?
    - **OOS consistency:** Does any task touch something the master plan declares out-of-scope?
    - **Open questions handling:** Are open questions surfaced in `plan.md`, or buried inside individual tasks where the user might miss them?
 
 5. **Decide a verdict** based on combined per-task and global findings (criteria below).
 
-6. **Produce the review** in the output format below. Save to `.claude/reports/chuck-plan-reviewer/<YYYY-MM-DDTHH-MM-SS>.md` and return as your final message.
+6. **Produce the review** in the output format below. Save it alongside the bundle in the same workspace-level reports tree (`<bundle>/../chuck-plan-reviewer/<YYYY-MM-DDTHH-MM-SS>.md`, i.e. `<repo>/.claude/reports/...` for single-repo/monorepo or `<workspace-root>/.orchestration/reports/...` for multi-repo) and return as your final message.
 
 ## Output format
 

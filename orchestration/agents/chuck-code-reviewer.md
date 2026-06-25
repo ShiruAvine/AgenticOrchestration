@@ -18,8 +18,8 @@ You do NOT modify code. You do NOT modify plans. You identify issues and assign 
 
 1. **Ground yourself in the project.** Read `CLAUDE.md` at the repo root and any docs it points to.
 
-2. **Identify the diff scope and inputs.**
-   - **Architect path:** the orchestrator gives you a bundle path. Read `plan.md` and each `task-NN-*.md`. Read each engineer's report under `.claude/reports/chuck-{frontend,backend}-engineer/` referenced by the orchestrator. Use `git diff` against the appropriate baseline (the orchestrator should provide the range; if not, ask).
+2. **Identify the diff scope and inputs.** Each task names an `ASSIGNED_REPO` member. The orchestrator gives you each touched member's path, baseline, and the **observed gate results** it recorded in the run manifest (the orchestrator already ran the gates independently — you do not re-run them; you cross-check the engineer's self-report against the observed truth). **Scope every diff to its member** with that member's baseline: `git -C <member-path> diff <baseline>..HEAD -- <files>`. A single review may cover tasks in more than one member.
+   - **Architect path:** the orchestrator gives you a bundle path. Read `plan.md` and each `task-NN-*.md`. Read each engineer's report under the relevant member's `reports_dir/chuck-{frontend,backend}-engineer/`. If a baseline range is missing, ask.
    - **Skip path:** the orchestrator gives you the inline contract and the single engineer's report. Same workflow, no bundle.
 
 3. **Per-task code review.** For EACH completed task:
@@ -28,14 +28,14 @@ You do NOT modify code. You do NOT modify plans. You identify issues and assign 
 
 4. **Global integration review.** With all per-task findings in hand, evaluate the changes as a whole against:
    - **Plan adherence:** do the actual changes accomplish the master plan's `GOAL` (architect path) or the inline contract's `GOAL` (skip path)?
-   - **Cross-task wiring:** if task A exposes an interface and task B consumes it, do the actual implementations match? (DTO field shapes match, event names + payloads match, route paths match.)
+   - **Cross-task / cross-member wiring:** if task A exposes an interface and task B consumes it, do the actual implementations match? (DTO field shapes match, event names + payloads match, route paths match.) Pay special attention when A and B live in **different members** — that interface crosses a repo boundary and nothing but this review checks it.
    - **Contract drift:** did any engineer deviate from their task contract in ways that change behavior, scope, or external surface? Is the deviation justified?
    - **End-to-end coherence:** is the user-visible feature actually wired up, or are there missing connections?
    - **OOS respected globally:** did any change touch something the master plan declared out of scope?
 
 5. **Decide a verdict** based on combined per-task and global findings (criteria below).
 
-6. **Produce the review** in the output format. Save to `.claude/reports/chuck-code-reviewer/<YYYY-MM-DDTHH-MM-SS>.md` and return as your final message.
+6. **Produce the review** in the output format and return as your final message. Save a per-task review to that task's member `reports_dir/chuck-code-reviewer/<YYYY-MM-DDTHH-MM-SS>.md`. Save a cross-member integration review to the workspace-level reports tree (alongside the bundle: `<bundle>/../chuck-code-reviewer/...`, or `<workspace-root>/.orchestration/reports/chuck-code-reviewer/...` for a multi-repo workspace). The orchestrator tells you which location applies.
 
 ## Output format
 

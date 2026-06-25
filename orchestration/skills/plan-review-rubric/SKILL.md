@@ -20,6 +20,7 @@ This skill provides a deterministic walkthrough for reviewing **one task file** 
 The task file MUST contain each of the following non-empty fields:
 - `TASK_ID` (matches filename without extension)
 - `ASSIGNED_AGENT`
+- `ASSIGNED_REPO` (member id; may be omitted only in a single-repo workspace)
 - `ORDER`
 - `DEPENDS_ON` (list; may be empty)
 - `GOAL`
@@ -43,14 +44,17 @@ Walk every reference to a file, function, or pattern in the task. For each:
 Hand-wave language ("various converters", "the relevant component", "appropriate service") → **major**.
 A cited file, function, or pattern that does not exist → **critical** (record under `UNVERIFIED CLAIMS`).
 
-### 3. Agent assignment
+### 3. Agent and member assignment
 
-Read the project's `CLAUDE.md` domain map. Confirm:
+Read the `ASSIGNED_REPO` member's `CLAUDE.md` domain map. Confirm:
+- `ASSIGNED_REPO` names a real in-scope workspace member (per the workspace profile)
+- Every path in `FILES_AFFECTED` lives inside that member; none crosses into another member
 - `ASSIGNED_AGENT` matches the directory of files in `FILES_AFFECTED`
 - No path in `SCOPE_BOUNDARIES.touch` falls outside the assigned agent's domain
 - No path appears in both `touch` and `do-not-touch`
 
 Wrong agent for the work → **critical**.
+Wrong/unknown member, or files spanning members → **critical**.
 Scope leak across domains → **critical**.
 
 ### 4. Project convention alignment

@@ -3,8 +3,10 @@
 //
 // Reads the hook JSON from stdin, decides whether the open folder needs
 // orchestration setup, and — only if it does AND the readiness check is enabled
-// (Setting 2) — emits `additionalContext` prompting the model to OFFER setup.
-// It never runs setup itself.
+// (Setting 2) — emits a user-visible `systemMessage` (so the nudge is actually
+// seen) plus `additionalContext` (so the model has the detail). It never runs
+// setup itself. Registered for `startup|resume` so it also fires on continued
+// sessions, not just brand-new ones.
 //
 // Invariants: this fires on every qualifying session start, so it must be fast
 // and must NEVER throw, block, or print an error. Any problem → exit 0 silent.
@@ -30,8 +32,11 @@ function readJSON(p) {
 function fileExists(p) {
   try { fs.accessSync(p); return true; } catch { return false; }
 }
-function emit(additionalContext) {
+// `systemMessage` (top-level) is shown to the USER directly — additionalContext
+// alone only reaches the model, which may silently ignore it. We emit both.
+function emit(systemMessage, additionalContext) {
   process.stdout.write(JSON.stringify({
+    systemMessage,
     hookSpecificOutput: { hookEventName: "SessionStart", additionalContext },
   }));
 }
@@ -69,13 +74,17 @@ function main() {
   const scope = `${topo.topology}${n ? ` with ${n} member${n === 1 ? "" : "s"}` : ""}`;
 
   if (fileExists(draft)) {
-    emit(`The orchestration plugin's readiness check found an INTERRUPTED setup in ${root} `
+    emit(
+      `⚙️  Orchestration: setup for this workspace looks interrupted — run \`/orchestrate-config init\` to finish it.`,
+      `The orchestration plugin's readiness check found an INTERRUPTED setup in ${root} `
       + `(a workspace draft exists but no finalized profile). Suggest to the user that they resume setup by `
       + `running \`/orchestrate-config init\`, then wait for their go-ahead. Do not run it automatically.`);
     return;
   }
 
-  emit(`The orchestration plugin's readiness check ran: ${root} has no valid orchestration workspace profile yet `
+  emit(
+    `⚙️  Orchestration: this workspace isn't configured yet (${scope}) — run \`/orchestrate-config init\` to set it up.`,
+    `The orchestration plugin's readiness check ran: ${root} has no valid orchestration workspace profile yet `
     + `(detected ${scope}). Suggest to the user that they run \`/orchestrate-config init\` to configure orchestration `
     + `for this workspace, then wait for their go-ahead. Do not run it automatically.`);
 }

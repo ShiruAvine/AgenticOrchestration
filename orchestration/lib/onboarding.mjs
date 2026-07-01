@@ -1,23 +1,24 @@
 #!/usr/bin/env node
-// SessionStart readiness check (the plugin's onboarding nudge).
+// SessionStart readiness NOTICE — the deterministic, model-independent layer of
+// the onboarding flow.
 //
-// Reads the hook JSON from stdin, decides whether the open folder needs
-// orchestration setup, and — only if it does AND the readiness check is enabled
-// (Setting 2) — emits a user-visible `systemMessage` (so the nudge is actually
-// seen) plus `additionalContext` (so the model has the detail). It never runs
-// setup itself. Registered for `startup|resume` so it also fires on continued
-// sessions, not just brand-new ones.
+// Reads the hook JSON from stdin and, only if the open workspace needs setup AND
+// the readiness check is enabled (Setting 2), emits a user-visible `systemMessage`
+// (guaranteed to be shown, regardless of what the model does) plus factual
+// `additionalContext`. It deliberately does NOT ask a question or run setup — the
+// actual interactive choice is raised on the user's first prompt by the
+// UserPromptSubmit hook (lib/prompt-nudge.mjs). This notice is the backstop that
+// guarantees the user at least SEES the detection even if that model-mediated
+// question is skipped. Registered for `startup|resume` so it fires on continued
+// sessions too.
 //
-// Invariants: this fires on every qualifying session start, so it must be fast
-// and must NEVER throw, block, or print an error. Any problem → exit 0 silent.
-// "Ready?" is decided deterministically (profile exists AND passes the schema
-// validator) — never by reading markdown.
+// Invariants: fires on every qualifying session start, so it must be fast and
+// must NEVER throw, block, or print an error. Any problem → exit 0 silent.
+// "Configured?" is decided deterministically by lib/readiness.mjs.
 
 import fs from "node:fs";
-import { detectTopology } from "./detect.mjs";
-import { validateWorkspace } from "./schema.mjs";
-import { profilePaths } from "./paths.mjs";
 import { readinessCheckEnabled } from "./config.mjs";
+import { readinessState } from "./readiness.mjs";
 
 function readStdin() {
   try { return fs.readFileSync(0, "utf8"); } catch { return ""; }
@@ -25,12 +26,6 @@ function readStdin() {
 function cwdFromInput(raw) {
   try { const j = JSON.parse(raw); if (j && typeof j.cwd === "string") return j.cwd; } catch { /* fall through */ }
   return process.cwd();
-}
-function readJSON(p) {
-  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
-}
-function fileExists(p) {
-  try { fs.accessSync(p); return true; } catch { return false; }
 }
 // `systemMessage` (top-level) is shown to the USER directly — additionalContext
 // alone only reaches the model, which may silently ignore it. We emit both.
@@ -41,53 +36,29 @@ function emit(systemMessage, additionalContext) {
   }));
 }
 
-function memberCount(topo) {
-  if (topo.topology === "multi-repo") return (topo.childRepos || []).length;
-  // Workspaces/pnpm/nx/turbo/lerna monorepos report placeholder subProjects
-  // ("<workspaces-field>", ...) from detectTopology, so this yields 0 there —
-  // the caller's `n ? …` guard drops the count from the nudge wording (cosmetic).
-  if (topo.topology === "monorepo") return (topo.subProjects || []).filter((p) => !String(p).startsWith("<")).length;
-  return 1;
-}
-
 function main() {
   const cwd = cwdFromInput(readStdin());
 
   // Setting 2: respect the readiness-check toggle (fail-open to ON on trouble).
   if (!readinessCheckEnabled(cwd)) return;
 
-  // Only nudge where there is actually something to orchestrate.
-  const topo = detectTopology(cwd);
-  if (!topo || !topo.topology) return;
+  const st = readinessState(cwd);
+  if (!st.applicable || !st.needsSetup) return; // nothing to orchestrate, or ready → silent
 
-  const root = topo.root || cwd;
-  const { profile: profilePath, draft } = profilePaths(root, topo.topology);
-
-  // Configured? Deterministic: the profile exists AND passes the validator.
-  const profile = readJSON(profilePath);
-  if (profile) {
-    const { valid } = validateWorkspace({ ...profile, decisions_needed: undefined });
-    if (valid) return; // ready → stay silent
-  }
-
-  const n = memberCount(topo);
-  const scope = `${topo.topology}${n ? ` with ${n} member${n === 1 ? "" : "s"}` : ""}`;
-
-  if (fileExists(draft)) {
+  if (st.interrupted) {
     emit(
-      `⚙️  Orchestration: setup for this workspace looks interrupted — run \`/orchestrate-config init\` to finish it.`,
-      `The orchestration plugin's readiness check found an INTERRUPTED setup in ${root} `
-      + `(a workspace draft exists but no finalized profile). Suggest to the user that they resume setup by `
-      + `running \`/orchestrate-config init\`, then wait for their go-ahead. Do not run it automatically.`);
+      `⚙️  Orchestration: setup for this workspace looks interrupted — you'll be asked how to proceed (or run \`/orchestrate-config init\`).`,
+      `The orchestration readiness check found an INTERRUPTED setup in ${st.root} (a workspace draft `
+      + `exists but no finalized profile). On the user's next prompt they will be asked how to proceed. `
+      + `Do not run setup automatically.`);
     return;
   }
 
   emit(
-    `⚙️  Orchestration: this workspace isn't configured yet (${scope}) — run \`/orchestrate-config init\` to set it up.`,
-    `The orchestration plugin's readiness check ran: ${root} has no valid orchestration workspace profile yet `
-    + `(detected ${scope}). Suggest to the user that they run \`/orchestrate-config init\` to configure orchestration `
-    + `for this workspace, then wait for their go-ahead. Do not run it automatically.`);
+    `⚙️  Orchestration: this workspace isn't configured yet (${st.scope}) — you'll be asked how to proceed (or run \`/orchestrate-config init\`).`,
+    `The orchestration readiness check ran: ${st.root} has no valid workspace profile yet (detected ${st.scope}). `
+    + `On the user's next prompt they will be asked how to proceed. Do not run setup automatically.`);
 }
 
-try { main(); } catch { /* a readiness nudge must never disturb the session */ }
+try { main(); } catch { /* a readiness notice must never disturb the session */ }
 process.exit(0);

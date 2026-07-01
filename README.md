@@ -20,10 +20,10 @@ This repo is a **Claude Code marketplace** (`agentic-orchestration`) hosting one
 | `chuck-code-reviewer` | Reviews completed work (per-task rubric + integration synthesis). |
 | `/orchestrate-config` | Manage your personal config: `init` (detect + derive), `show`, `set` (guided menus — no hand-typed paths), `update` (re-detect + reconcile). |
 | `/orchestrate` | Slash command to run a ticket through the full workflow. |
-| `hooks/` + `lib/onboarding.mjs` | `SessionStart` readiness check: if the open folder isn't configured, suggests `/orchestrate-config init`; silent once it is (toggle via the `readiness_check` setting). |
+| `hooks/` + `lib/onboarding.mjs` + `lib/prompt-nudge.mjs` | Readiness check on an unconfigured folder: `SessionStart` shows a visible notice, then `UserPromptSubmit` asks how to proceed on your first prompt (configure now / skip this session / disable here — gated to once per session). Silent once configured; toggle via the `readiness_check` setting. |
 | `ORCHESTRATION.md` | The generic workflow, contract template, hard gates, run manifest, and resume rules. |
 | `WORKSPACE.md` | Topology definitions, the detection algorithm (spec for `lib/detect.mjs`), and the workspace-profile JSON schema. |
-| `lib/` | Zero-dependency node scripts that make the mechanical parts deterministic: `detect.mjs` (topology + member profiling incl. knowledge links), `overrides.mjs` (durable overrides + derive profile = detected ⊕ overrides), `profile.mjs` (validate/render), `config.mjs` (settings cascade), `paths.mjs` (file locations), `onboarding.mjs` (readiness check), `manifest.mjs`/`gates.mjs` (run state + gates), `schema.mjs` (validators). |
+| `lib/` | Zero-dependency node scripts that make the mechanical parts deterministic: `detect.mjs` (topology + member profiling incl. knowledge links), `overrides.mjs` (durable overrides + derive profile = detected ⊕ overrides), `profile.mjs` (validate/render), `config.mjs` (settings cascade), `paths.mjs` (file locations), `readiness.mjs`/`onboarding.mjs`/`prompt-nudge.mjs` (readiness check + onboarding notice/question), `manifest.mjs`/`gates.mjs` (run state + gates), `schema.mjs` (validators). |
 | `plan-review-rubric`, `code-review-rubric` | Deterministic per-task review checklists. |
 
 ## Install

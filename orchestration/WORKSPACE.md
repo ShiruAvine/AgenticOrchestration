@@ -141,11 +141,16 @@ via overrides. Agents read these instead of re-hunting for a repo's knowledge ea
 
 Plugin behavior has two switches. **Setting 1** (plugin on/off everywhere) is Claude
 Code's built-in `enabledPlugins` — not reinvented here. **Setting 2** (the
-workspace-readiness check that drives the onboarding nudge) is plugin-owned in
+workspace-readiness check that drives the onboarding flow) is plugin-owned in
 `config.mjs`, default ON, cascading global (`~/.claude/orchestration/config.json`) <
-per-workspace (`.claude/orchestration/config.local.json`). Settings are read once at
-session start (via the `SessionStart` hook → `lib/onboarding.mjs`) and are **fixed for
-the session** — a mid-session change applies only in a new session.
+per-workspace (`.claude/orchestration/config.local.json`). It gates two hooks that
+share one deterministic decision (`lib/readiness.mjs`): the `SessionStart` hook
+(`lib/onboarding.mjs`) shows a visible notice when the workspace is unconfigured, and
+the `UserPromptSubmit` hook (`lib/prompt-nudge.mjs`) asks the user how to proceed on
+their first prompt (configure now / skip this session / disable here), gated to once
+per session via a marker under `~/.claude/orchestration/session-nudges/`. The setting
+is read at each hook invocation; "Disable here" writes `readiness_check false` at the
+per-workspace layer, which silences both hooks from the next session on.
 
 ## Setup flow
 

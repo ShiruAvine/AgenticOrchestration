@@ -80,16 +80,23 @@ function main() {
   const directive =
     `[orchestration onboarding — fires once per session while this workspace is unconfigured]\n`
     + `${longWhat}\n`
-    + `BEFORE addressing the user's request, ask them how to proceed using your interactive question `
-    + `tool (AskUserQuestion) — a single question with exactly these options:\n`
-    + `  • "Configure now" — invoke the /orchestrate-config init skill to set up (or resume) this workspace.\n`
-    + `  • "Skip this session" — do nothing about this; you won't be asked again this session. `
-    + `Then continue with the user's actual request.\n`
-    + `  • "Disable here" — run exactly this command, then confirm it's off:\n`
+    + `BEFORE doing anything with the user's request, ask them how to proceed using your interactive `
+    + `question tool (AskUserQuestion) — a single question with exactly these options. Briefly make clear `
+    + `this is a one-time orchestration-plugin setup prompt, separate from their request, so they know why `
+    + `they're being asked:\n`
+    + `  • "Configure now" — set up this workspace via the /orchestrate-config init skill. DEFER the user's `
+    + `original request: do NOT start working on it. Run the ENTIRE setup flow to completion first `
+    + `(dispatch the settings-manager, resolve every decision it surfaces, finalize and report the `
+    + `profile). ONLY once setup is fully finished, tell the user it's done and THEN return to their `
+    + `original request — restate it briefly so the context is clear before you act on it.\n`
+    + `  • "Skip this session" — do nothing about setup; you won't be asked again this session. Proceed `
+    + `directly with the user's original request.\n`
+    + `  • "Disable here" — run exactly this command, confirm it's off, then proceed with the user's `
+    + `original request:\n`
     + `      ${disableCmd}\n`
-    + `After the user answers, perform that option's action, THEN address their original request. `
-    + `Do not run any setup or the disable command until the user has chosen. If the user ignores the `
-    + `question and simply restates their request, honor the request and don't re-ask.`;
+    + `Do not run any setup or the disable command until the user has chosen. Never interleave setup with `
+    + `the original request — finish the chosen branch first. If the user ignores the question and simply `
+    + `restates their request, honor the request and don't re-ask.`;
 
   process.stdout.write(JSON.stringify({
     systemMessage: `⚙️  Orchestration: ${shortWhat} — you'll be asked how to proceed.`,

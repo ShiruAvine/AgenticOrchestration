@@ -6,15 +6,17 @@
 // a `decisions_needed` entry, never an invented value.
 //
 // Usage:   node detect.mjs [workspace-root]      (defaults to cwd)
-// Output:  a workspace.json object (schema orchestration/workspace@1) on stdout,
+// Output:  a workspace.json object (schema orchestration/workspace@2) on stdout,
 //          with `decisions_needed` populated. The command/agent layer resolves
-//          those decisions and writes the finalized profile via profile.mjs.
+//          those decisions into overrides.local.json and derives the profile
+//          via lib/overrides.mjs (detected ⊕ overrides).
 //
 // Exit codes: 0 = detected; 2 = nothing to orchestrate (blocked); 1 = error.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WORKSPACE_SCHEMA, validateWorkspace } from "./schema.mjs";
 
 const IGNORE_DIRS = new Set(["node_modules", "vendor", "dist", "build", ".git"]);
@@ -37,6 +39,8 @@ function git(cwd, args) {
   }
 }
 function exists(p) { try { fs.accessSync(p); return true; } catch { return false; } }
+// Normalize to forward slashes so profiles are stable across platforms.
+const posix = (p) => p.split(path.sep).join("/");
 function readJSON(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 function readText(p) { try { return fs.readFileSync(p, "utf8"); } catch { return null; } }
 function listDirs(p) {
@@ -160,6 +164,21 @@ function extractGates(s, notes) {
   return gates;
 }
 
+// Resolve the fixed knowledge-link slots for a member (path relative to the
+// workspace root, matching member.path). A slot is the path if the artifact
+// exists on disk, else null. `rubrics` has no standard member location, so it
+// stays null here and is filled via overrides/extra when a user has one.
+function knowledgeLinks(abs, rel) {
+  const base = rel === "." ? "" : rel;
+  const link = (sub) => (exists(path.join(abs, sub)) ? posix(path.join(base, sub)) : null);
+  return {
+    claude_md: link("CLAUDE.md"),
+    skills: link(".claude/skills"),
+    rubrics: null,
+    extra: {},
+  };
+}
+
 function classifyRole(stack) {
   if (stack.isFront && stack.isBack)
     return { role: "chuck-backend-engineer", ambiguous: true };
@@ -203,6 +222,7 @@ function profileMember(root, rel, topology) {
     role: roleInfo.role,
     reports_dir: reportsDir,
     gates,
+    knowledge: knowledgeLinks(abs, rel),
     notes,
   };
   if (roleInfo.role_reason) member.role_reason = roleInfo.role_reason;
@@ -285,7 +305,9 @@ function detect(rootArg) {
 }
 
 // CLI entry
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+// fileURLToPath (not URL.pathname) — the latter yields "/E:/..." on Windows,
+// which path.resolve turns into "E:\E:\...", making this guard always false.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const result = detect(process.argv[2]);
   if (result.blocked) {
@@ -301,4 +323,4 @@ if (isMain) {
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 }
 
-export { detect, detectTopology, classifyStack, classifyRole, extractGates };
+export { detect, detectTopology, classifyStack, classifyRole, extractGates, knowledgeLinks };

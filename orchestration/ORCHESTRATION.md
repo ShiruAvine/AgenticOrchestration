@@ -38,7 +38,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 0. **Phase 0 — Establish the workspace.** Before anything else, know what you are pointed at.
    - **Load the workspace profile** (a personal, gitignored file). Read `workspace.json` — the source of truth, always under `<workspace-root>/.claude/orchestration/` (`workspace.json` for multi-repo, `workspace.local.json` for single-repo / monorepo) — not the rendered `.md`.
-   - **If no profile exists**, run `/orchestrate-setup` first (detect topology → confirm with user → write profile). Do not proceed without one — guessing topology is what drives drift. See `WORKSPACE.md`.
+   - **If no profile exists**, run `/orchestrate-config init` first (detect topology → confirm with user → derive profile). Do not proceed without one — guessing topology is what drives drift. See `WORKSPACE.md`.
    - **If a profile exists**, read it. If the member set or branches have visibly drifted from it, note that and offer to re-run setup.
    - **Resolve this run's scope.** From the profile's in-scope members, determine which the ticket touches — by the user's explicit statement, by inference, or by asking. The active member set may be one member, several, or all. Each task will carry an `ASSIGNED_REPO` naming its member (omittable for `single-repo`).
 
@@ -153,7 +153,7 @@ Hard gates exist regardless of project. The specific checks to run are project-d
 Work is checkpointed **on disk**, so a run can stop mid-execution (context limit, the user steps away, a crash) and resume without redoing finished work. On re-invocation, reconstruct state rather than starting over:
 
 - **The run manifest is the primary checkpoint.** If a `run.json` exists for the run, run `node lib/manifest.mjs show <run.json>`: it prints each task's `status`/`verdict`/`user_verified`, the per-member baselines, and an explicit `RESUME AT: <first not-done task>` pointer. Resume there; do **not** re-dispatch tasks already `done`. The manifest replaces guessing — only fall back to scanning the reports tree if no manifest exists (older runs).
-- **Setup interrupted** → a leftover `workspace.*.draft` is the checkpoint. `/orchestrate-setup` resumes from it (see that command).
+- **Setup interrupted** → a leftover `workspace.*.draft` (plus any partial `overrides.local.json`) is the checkpoint. `/orchestrate-config init` resumes from it (see that command).
 - **Planning interrupted** (no manifest yet — it is created at the start of engineering dispatch) → if a bundle exists but has no plan-review next to it, resume at plan review; if it has an approved review but no manifest, resume at engineering dispatch (which opens the manifest).
 - **Validate against reality.** The manifest is the source of truth for *intent*, but verify the working tree matches: a task marked `done` whose diff has vanished, or a `baseline` that no longer exists, is a conflict to **surface to the user**, not to silently re-run.
 - **Always re-confirm the resume point with the user** before continuing — show what the manifest says is done and where you'll pick up.

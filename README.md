@@ -4,7 +4,7 @@ A portable [Claude Code](https://code.claude.com) plugin that turns the main ses
 
 The specialists are **project-agnostic**. They learn each project's stack, layout, conventions, and check commands at runtime by reading that project's `CLAUDE.md`. Nothing about any specific framework is baked into this plugin.
 
-A **Phase 0 discovery step** (`/orchestrate-setup`) first figures out *what* it is pointed at — a single repo, a monorepo, or a parent folder of independent repos. A read-only analyst agent (`chuck-workspace-analyst`) does this **deterministically** from evidence on disk, drafts a **workspace profile**, and surfaces only the crucial calls for you to confirm. Every later run reads that profile, so "which repos are in scope", "where reports go", and "what the diff is" are pinned down rather than guessed. A single run can target one member or several. The profile is **personal and gitignored** — it captures how *you* drive the workspace and never gets committed.
+A **Phase 0 discovery step** (`/orchestrate-config init`) first figures out *what* it is pointed at — a single repo, a monorepo, or a parent folder of independent repos. A read-only meta agent (`orchestration-settings-manager`) does this **deterministically** from evidence on disk; the **workspace profile** is then *derived* from those detected facts plus your durable overrides, surfacing only the crucial calls for you to confirm. Every later run reads that profile, so "which repos are in scope", "where reports go", "what the diff is", and "where each repo's `CLAUDE.md`/skills live" are pinned down rather than guessed. A single run can target one member or several. The profile is **personal and gitignored** — it captures how *you* drive the workspace and never gets committed. A `SessionStart` readiness check nudges you to run `init` the first time you open an unconfigured folder, then stays quiet.
 
 ## What's inside
 
@@ -12,17 +12,18 @@ This repo is a **Claude Code marketplace** (`agentic-orchestration`) hosting one
 
 | Component | What it is |
 |-----------|-----------|
-| `chuck-workspace-analyst` | Read-only Phase 0 analyst: deterministically detects topology, profiles members, drafts the workspace profile, returns only the crucial decisions. |
+| `orchestration-settings-manager` | Read-only meta agent (Phase 0 + config lifecycle): deterministically detects topology, profiles members incl. knowledge links, derives the profile from detected facts ⊕ your overrides, returns only the crucial decisions. |
 | `chuck-architect` | Plans and decomposes a ticket into a reviewable bundle (master plan + per-task contracts). |
 | `chuck-frontend-engineer` | Implements frontend/UI tasks from a contract. |
 | `chuck-backend-engineer` | Implements backend/services/API/DB tasks from a contract. |
 | `chuck-plan-reviewer` | Reviews plan bundles (per-task rubric + global synthesis). |
 | `chuck-code-reviewer` | Reviews completed work (per-task rubric + integration synthesis). |
-| `/orchestrate-setup` | Slash command for Phase 0: detect topology, confirm with the user, write the workspace profile. |
+| `/orchestrate-config` | Manage your personal config: `init` (detect + derive), `show`, `set` (guided menus — no hand-typed paths), `update` (re-detect + reconcile). |
 | `/orchestrate` | Slash command to run a ticket through the full workflow. |
+| `hooks/` + `lib/onboarding.mjs` | `SessionStart` readiness check: if the open folder isn't configured, suggests `/orchestrate-config init`; silent once it is (toggle via the `readiness_check` setting). |
 | `ORCHESTRATION.md` | The generic workflow, contract template, hard gates, run manifest, and resume rules. |
 | `WORKSPACE.md` | Topology definitions, the detection algorithm (spec for `lib/detect.mjs`), and the workspace-profile JSON schema. |
-| `lib/` | Zero-dependency node scripts that make the mechanical parts deterministic: `detect.mjs` (topology + member profiling → `workspace.json`), `profile.mjs` (validate/finalize/render), `manifest.mjs` (run state), `gates.mjs` (run a member's gates), `schema.mjs` (validators). |
+| `lib/` | Zero-dependency node scripts that make the mechanical parts deterministic: `detect.mjs` (topology + member profiling incl. knowledge links), `overrides.mjs` (durable overrides + derive profile = detected ⊕ overrides), `profile.mjs` (validate/render), `config.mjs` (settings cascade), `paths.mjs` (file locations), `onboarding.mjs` (readiness check), `manifest.mjs`/`gates.mjs` (run state + gates), `schema.mjs` (validators). |
 | `plan-review-rubric`, `code-review-rubric` | Deterministic per-task review checklists. |
 
 ## Install
@@ -59,11 +60,11 @@ The orchestrator runs against a **workspace**, which is *not* assumed to be one 
 | `monorepo` | one repo, many sub-projects | `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`) |
 | `multi-repo` | a non-repo parent folder of independent repos opened together | `<workspace-root>/.claude/orchestration/workspace.json` (+ rendered `.md`) |
 
-Run `/orchestrate-setup` once per workspace (or whenever it changes). It dispatches `chuck-workspace-analyst` to detect the topology and profile every member deterministically, asks you **only the crucial decisions** (ambiguous topology, out-of-scope exclusions, missing `CLAUDE.md`, ambiguous role), and writes the profile — a helper document recording each member's stack, gate commands, role, and any per-case handling (e.g. "this member has no lint script — skip that gate"). Setup also adds the `.gitignore` entries that keep the profile and reports personal. After that, `/orchestrate` reads the profile and tags each task with an `ASSIGNED_REPO`, so one run can span multiple repos when a feature crosses them.
+Run `/orchestrate-config init` once per workspace (or whenever it changes). It dispatches `orchestration-settings-manager` to detect the topology and profile every member deterministically, asks you **only the crucial decisions** (ambiguous topology, out-of-scope exclusions, missing `CLAUDE.md`, ambiguous role), records your answers as durable overrides, and derives the profile — recording each member's stack, gate commands, role, knowledge links, and any per-case handling (e.g. "this member has no lint script — skip that gate"). It also adds the `.gitignore` entries that keep the profile and reports personal. After that, `/orchestrate` reads the profile and tags each task with an `ASSIGNED_REPO`, so one run can span multiple repos when a feature crosses them. Re-run `/orchestrate-config update` to re-detect and reconcile without losing your overrides.
 
 ## Wire it into a project
 
-The plugin supplies the *generic* machinery. Each member supplies its own **domain map** — which specialist owns which directory, which framework, which convention checks and lint/test commands to run. Put that in the member's `CLAUDE.md` (or a file it imports). The specialists read it before doing any work. (`/orchestrate-setup` can scaffold a minimal one for members that lack it.)
+The plugin supplies the *generic* machinery. Each member supplies its own **domain map** — which specialist owns which directory, which framework, which convention checks and lint/test commands to run. Put that in the member's `CLAUDE.md` (or a file it imports). The specialists read it before doing any work. (`/orchestrate-config init` can scaffold a minimal one for members that lack it.)
 
 A minimal project `CLAUDE.md` section looks like:
 

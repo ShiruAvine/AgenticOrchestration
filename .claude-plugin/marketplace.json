@@ -8,7 +8,7 @@
     {
       "name": "orchestration",
       "source": "./orchestration",
-      "description": "Generic orchestration workflow: chuck-architect, chuck-frontend/backend-engineer, chuck-plan/code-reviewer agents, the /orchestrate command, and plan/code review rubrics."
+      "description": "Generic orchestration workflow: chuck-architect, chuck-frontend/backend-engineer, chuck-plan/code-reviewer agents plus the orchestration-settings-manager meta agent, the /orchestrate and /orchestrate-config commands, and plan/code review rubrics."
     }
   ]
 }

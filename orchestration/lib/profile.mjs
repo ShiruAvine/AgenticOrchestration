@@ -1,33 +1,18 @@
 #!/usr/bin/env node
-// Workspace profile: validate, finalize (apply decisions), and render a
-// human-readable markdown view. workspace.json is the SOURCE OF TRUTH; the
-// rendered workspace.md is a generated view for humans to read (never the thing
-// other steps parse — they read the JSON).
+// Workspace profile: validate + render a human-readable markdown view.
+// workspace.json is the SOURCE OF TRUTH; the rendered workspace.md is a
+// generated view for humans (never the thing other steps parse — they read the
+// JSON). The profile is DERIVED (detected ⊕ overrides) by lib/overrides.mjs;
+// this module no longer merges — it only validates and renders.
 //
 // Verbs:
 //   node profile.mjs validate <workspace.json>
 //       → exit 0 + "OK" if it conforms to schema; exit 1 + errors otherwise.
-//
-//   node profile.mjs finalize <detected.json> <answers.json> [--out <path>]
-//       → applies the user's decision answers to a detected profile, drops
-//         `decisions_needed`, validates, prints (or writes) the final profile.
-//       answers.json shape:
-//         { "members": { "<id>": {
-//             "role": "<one of ROLES>",            // optional override
-//             "role_reason": "<text>",             // required if role is a *-scope variant
-//             "exclude": true,                      // shorthand → out-of-scope
-//             "gates": { "test": "<cmd>" },         // optional gate overrides
-//             "note": "<text to append>" } } }
-//
 //   node profile.mjs render <workspace.json> [--out <path>]
 //       → emits the markdown view (stdout or file).
-//
-// Anything in answers.json the verb doesn't understand is an error, not a
-// silent no-op — finalize fails loudly so a typo can't corrupt the profile.
 
 import fs from "node:fs";
-import path from "node:path";
-import { validateWorkspace, ROLES, GATE_KEYS } from "./schema.mjs";
+import { validateWorkspace, GATE_KEYS, KNOWLEDGE_SLOTS } from "./schema.mjs";
 
 function die(msg, code = 1) { process.stderr.write(msg + "\n"); process.exit(code); }
 function readJSON(p) {
@@ -50,49 +35,6 @@ function cmdValidate(file) {
   const { valid, errors } = validateWorkspace({ ...obj, decisions_needed: undefined });
   if (!valid) die("INVALID:\n  " + errors.join("\n  "));
   process.stdout.write("OK\n");
-}
-
-// --- finalize ---------------------------------------------------------------
-
-const ALLOWED_ANSWER_KEYS = new Set(["role", "role_reason", "exclude", "gates", "note"]);
-
-function cmdFinalize(detectedFile, answersFile, out) {
-  const ws = readJSON(detectedFile);
-  const answers = readJSON(answersFile);
-  const memberAnswers = (answers && answers.members) || {};
-  const ids = new Set(ws.members.map((m) => m.id));
-
-  for (const id of Object.keys(memberAnswers)) {
-    if (!ids.has(id)) die(`answers reference unknown member "${id}"`);
-    const a = memberAnswers[id];
-    for (const k of Object.keys(a)) {
-      if (!ALLOWED_ANSWER_KEYS.has(k)) die(`answer for "${id}" has unknown key "${k}"`);
-    }
-    const m = ws.members.find((x) => x.id === id);
-
-    if (a.exclude === true) { m.role = "out-of-scope"; }
-    if (a.role !== undefined) {
-      if (!ROLES.includes(a.role)) die(`answer for "${id}": role "${a.role}" not one of ${ROLES.join(", ")}`);
-      m.role = a.role;
-    }
-    if (a.role_reason !== undefined) m.role_reason = a.role_reason;
-    if ((m.role === "out-of-scope" || m.role === "in-scope:no-matching-agent") && !m.role_reason) {
-      die(`answer for "${id}": role "${m.role}" requires role_reason`);
-    }
-    if (m.role.startsWith("chuck-")) delete m.role_reason;
-    if (a.gates) {
-      for (const k of Object.keys(a.gates)) {
-        if (!GATE_KEYS.includes(k)) die(`answer for "${id}": unknown gate "${k}"`);
-        m.gates[k] = a.gates[k];
-      }
-    }
-    if (a.note) { m.notes = m.notes || []; m.notes.push(a.note); }
-  }
-
-  ws.decisions_needed = [];
-  const { valid, errors } = validateWorkspace(ws);
-  if (!valid) die("finalized profile is INVALID:\n  " + errors.join("\n  "));
-  emit(JSON.stringify(ws, null, 2) + "\n", out);
 }
 
 // --- render -----------------------------------------------------------------
@@ -137,6 +79,14 @@ function gateLine(g) {
   return GATE_KEYS.map((k) => `${k}=${g[k] == null ? "none" : g[k]}`).join("  ");
 }
 
+function knowledgeLine(k) {
+  if (!k) return "—";
+  const parts = KNOWLEDGE_SLOTS.map((s) => `${s}=${k[s] == null ? "—" : k[s]}`);
+  const extraKeys = k.extra ? Object.keys(k.extra) : [];
+  if (extraKeys.length) parts.push(`extra=[${extraKeys.join(", ")}]`);
+  return parts.join("  ");
+}
+
 function cmdRender(file, out) {
   const ws = readJSON(file);
   const { valid, errors } = validateWorkspace({ ...ws, decisions_needed: undefined });
@@ -159,6 +109,7 @@ function cmdRender(file, out) {
     L.push(`  claude_md: ${m.claude_md}`);
     L.push(`  role: ${m.role}${m.role_reason ? ` (${m.role_reason})` : ""}`);
     L.push(`  gates: ${gateLine(m.gates)}`);
+    L.push(`  knowledge: ${knowledgeLine(m.knowledge)}`);
     L.push(`  reports_dir: ${m.reports_dir}`);
     if (m.notes && m.notes.length) L.push(`  notes: ${m.notes.join("; ")}`);
   }
@@ -191,7 +142,6 @@ const [verb, ...rest] = process.argv.slice(2);
 const out = outArg(rest);
 switch (verb) {
   case "validate": if (!rest[0]) die("usage: profile.mjs validate <workspace.json>"); cmdValidate(rest[0]); break;
-  case "finalize": if (!rest[1]) die("usage: profile.mjs finalize <detected.json> <answers.json> [--out <path>]"); cmdFinalize(rest[0], rest[1], out); break;
   case "render": if (!rest[0]) die("usage: profile.mjs render <workspace.json> [--out <path>]"); cmdRender(rest[0], out); break;
-  default: die("usage: profile.mjs <validate|finalize|render> ...");
+  default: die("usage: profile.mjs <validate|render> ...");
 }

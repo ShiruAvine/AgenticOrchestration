@@ -8,8 +8,10 @@
 // Each validator returns { valid: boolean, errors: string[] } — errors are
 // path-qualified (e.g. "members[2].gates.test: expected string|null").
 
-export const WORKSPACE_SCHEMA = "orchestration/workspace@1";
+export const WORKSPACE_SCHEMA = "orchestration/workspace@2";
 export const RUN_SCHEMA = "orchestration/run@1";
+export const CONFIG_SCHEMA = "orchestration/config@1";
+export const OVERRIDES_SCHEMA = "orchestration/overrides@1";
 
 export const TOPOLOGIES = ["single-repo", "monorepo", "multi-repo"];
 export const ROLES = [
@@ -19,6 +21,14 @@ export const ROLES = [
   "out-of-scope",
 ];
 export const GATE_KEYS = ["convention", "lint", "test", "build"];
+// Fixed per-member knowledge-link slots. Each is a resolved path or null
+// (null = no link OR the file is absent — consumers treat both the same).
+// Anything outside these slots lives in the free-form `extra` object.
+export const KNOWLEDGE_SLOTS = ["claude_md", "skills", "rubrics"];
+// Plugin config (Setting 2). Setting 1 (plugin on/off everywhere) is delegated
+// to Claude Code's built-in `enabledPlugins` and deliberately not modelled here.
+export const CONFIG_KEYS = ["readiness_check"];
+export const CONFIG_DEFAULTS = { schema: CONFIG_SCHEMA, readiness_check: true };
 export const RUN_STATUSES = ["planning", "executing", "complete", "blocked"];
 export const TASK_STATUSES = [
   "not_started", "in_progress", "gates_verified",
@@ -114,6 +124,113 @@ function validateMember(errs, p, m) {
   }
   if (m.notes !== undefined && checkArray(errs, `${p}.notes`, m.notes)) {
     m.notes.forEach((n, i) => checkType(errs, `${p}.notes[${i}]`, n, isString, "string"));
+  }
+  validateKnowledge(errs, `${p}.knowledge`, m.knowledge);
+}
+
+// knowledge: the fixed slots (string|null) plus a free-form `extra` object.
+function validateKnowledge(errs, p, k) {
+  if (k == null || typeof k !== "object" || Array.isArray(k)) {
+    errs.push(`${p}: expected an object`);
+    return;
+  }
+  for (const slot of KNOWLEDGE_SLOTS) {
+    checkType(errs, `${p}.${slot}`, k[slot], isStringOrNull, "string|null (null = missing link/file)");
+  }
+  if (k.extra == null || typeof k.extra !== "object" || Array.isArray(k.extra)) {
+    errs.push(`${p}.extra: expected an object (free-form user links)`);
+  }
+  // Any key that is neither a known slot nor `extra` is a typo — fail loudly.
+  for (const key of Object.keys(k)) {
+    if (key !== "extra" && !KNOWLEDGE_SLOTS.includes(key)) {
+      errs.push(`${p}: unknown knowledge key "${key}" (put custom links under extra)`);
+    }
+  }
+}
+
+// --- config -----------------------------------------------------------------
+
+// Validate a plugin config object. On-disk files may be `partial` (a workspace
+// override that sets only some keys); the merged effective config is validated
+// in full. Unknown keys fail loudly so a typo can't silently disable a setting.
+export function validateConfig(obj, { partial = false } = {}) {
+  const errs = [];
+  if (obj == null || typeof obj !== "object" || Array.isArray(obj)) {
+    return { valid: false, errors: ["root: expected an object"] };
+  }
+  if (obj.schema !== CONFIG_SCHEMA) {
+    errs.push(`schema: expected "${CONFIG_SCHEMA}", got ${JSON.stringify(obj.schema)}`);
+  }
+  for (const k of Object.keys(obj)) {
+    if (k !== "schema" && !CONFIG_KEYS.includes(k)) errs.push(`unknown config key "${k}"`);
+  }
+  if (!partial || obj.readiness_check !== undefined) {
+    checkType(errs, "readiness_check", obj.readiness_check, isBool, "boolean");
+  }
+  return { valid: errs.length === 0, errors: errs };
+}
+
+// --- overrides --------------------------------------------------------------
+
+// The durable, human-authored layer. The profile is derived = detected ⊕ this.
+// Every field is optional (a sparse override), but present fields are strict:
+// fixed slots / roles / gate keys are allowlisted so a typo fails loudly. Only
+// `knowledge.extra` is free-form (arbitrary link names → string paths).
+const OVERRIDE_MEMBER_KEYS = new Set(["role", "role_reason", "gates", "knowledge", "notes"]);
+
+export function validateOverrides(obj) {
+  const errs = [];
+  if (obj == null || typeof obj !== "object" || Array.isArray(obj)) {
+    return { valid: false, errors: ["root: expected an object"] };
+  }
+  if (obj.schema !== OVERRIDES_SCHEMA) {
+    errs.push(`schema: expected "${OVERRIDES_SCHEMA}", got ${JSON.stringify(obj.schema)}`);
+  }
+  if (obj.members == null || typeof obj.members !== "object" || Array.isArray(obj.members)) {
+    errs.push("members: expected an object (map of member id → override)");
+    return { valid: errs.length === 0, errors: errs };
+  }
+  for (const [id, mo] of Object.entries(obj.members)) {
+    const p = `members.${id}`;
+    if (mo == null || typeof mo !== "object" || Array.isArray(mo)) { errs.push(`${p}: expected an object`); continue; }
+    for (const k of Object.keys(mo)) {
+      if (!OVERRIDE_MEMBER_KEYS.has(k)) errs.push(`${p}: unknown override key "${k}"`);
+    }
+    if (mo.role !== undefined) checkEnum(errs, `${p}.role`, mo.role, ROLES);
+    if (mo.role_reason !== undefined) checkType(errs, `${p}.role_reason`, mo.role_reason, isString, "string");
+    if (mo.gates !== undefined) {
+      if (mo.gates == null || typeof mo.gates !== "object" || Array.isArray(mo.gates)) {
+        errs.push(`${p}.gates: expected an object`);
+      } else {
+        for (const [gk, gv] of Object.entries(mo.gates)) {
+          if (!GATE_KEYS.includes(gk)) { errs.push(`${p}.gates: unknown gate "${gk}"`); continue; }
+          checkType(errs, `${p}.gates.${gk}`, gv, isStringOrNull, "string|null");
+        }
+      }
+    }
+    if (mo.knowledge !== undefined) validateKnowledgeOverride(errs, `${p}.knowledge`, mo.knowledge);
+    if (mo.notes !== undefined && checkArray(errs, `${p}.notes`, mo.notes)) {
+      mo.notes.forEach((n, i) => checkType(errs, `${p}.notes[${i}]`, n, isString, "string"));
+    }
+  }
+  return { valid: errs.length === 0, errors: errs };
+}
+
+function validateKnowledgeOverride(errs, p, k) {
+  if (k == null || typeof k !== "object" || Array.isArray(k)) { errs.push(`${p}: expected an object`); return; }
+  for (const key of Object.keys(k)) {
+    if (key === "extra") {
+      if (k.extra == null || typeof k.extra !== "object" || Array.isArray(k.extra)) {
+        errs.push(`${p}.extra: expected an object`); continue;
+      }
+      for (const [name, val] of Object.entries(k.extra)) {
+        checkType(errs, `${p}.extra.${name}`, val, isString, "string (a link path)");
+      }
+    } else if (KNOWLEDGE_SLOTS.includes(key)) {
+      checkType(errs, `${p}.${key}`, k[key], isStringOrNull, "string|null");
+    } else {
+      errs.push(`${p}: unknown knowledge key "${key}" (custom links go under extra)`);
+    }
   }
 }
 

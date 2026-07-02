@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Plugin config — Setting 2: the workspace-readiness check.
+// Plugin config — the two workspace-behavior switches (both boolean, default ON):
+//   readiness_check          — the onboarding nudge when the workspace is UNconfigured
+//   proactive_orchestration  — when the workspace IS configured, prime the main session
+//                              to route code work through /orchestrate (off = on demand only)
 // Setting 1 (plugin on/off everywhere) is Claude Code's built-in `enabledPlugins`
 // and is deliberately NOT modelled here.
 //
@@ -59,21 +62,23 @@ export function readEffectiveConfig(root) {
   return { config, notes };
 }
 
-// Fail-open helper for the hook: any trouble → treat the check as ON (default).
+// Fail-open helpers for the hook: any trouble → treat the switch as ON (default).
 export function readinessCheckEnabled(root) {
   try { return readEffectiveConfig(root).config.readiness_check !== false; }
+  catch { return true; }
+}
+export function proactiveOrchestrationEnabled(root) {
+  try { return readEffectiveConfig(root).config.proactive_orchestration !== false; }
   catch { return true; }
 }
 
 // --- write ------------------------------------------------------------------
 
 function coerce(key, raw) {
-  if (key === "readiness_check") {
-    if (raw === "true" || raw === "on") return true;
-    if (raw === "false" || raw === "off") return false;
-    die(`readiness_check expects true|false (or on|off), got "${raw}"`);
-  }
-  return raw;
+  // Every config key is a boolean (see CONFIG_KEYS). cmdSet validates the key first.
+  if (raw === "true" || raw === "on") return true;
+  if (raw === "false" || raw === "off") return false;
+  die(`${key} expects true|false (or on|off), got "${raw}"`);
 }
 
 function cmdSet(scope, key, rawval, root) {

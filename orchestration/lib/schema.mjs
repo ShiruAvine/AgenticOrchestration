@@ -23,10 +23,14 @@ export const GATE_KEYS = ["convention", "lint", "test", "build"];
 // (null = no link OR the file is absent — consumers treat both the same).
 // Anything outside these slots lives in the free-form `extra` object.
 export const KNOWLEDGE_SLOTS = ["claude_md", "skills", "rubrics"];
-// Plugin config (Setting 2). Setting 1 (plugin on/off everywhere) is delegated
-// to Claude Code's built-in `enabledPlugins` and deliberately not modelled here.
-export const CONFIG_KEYS = ["readiness_check"];
-export const CONFIG_DEFAULTS = { schema: CONFIG_SCHEMA, readiness_check: true };
+// Plugin settings. Setting 1 (plugin on/off everywhere) is delegated to Claude
+// Code's built-in `enabledPlugins` and deliberately not modelled here.
+//   readiness_check          — the onboarding nudge when a workspace is UNconfigured
+//   proactive_orchestration  — when a workspace IS configured, prime the main session
+//                              to route code work through /orchestrate (off = only on demand)
+// Both are booleans, default ON.
+export const CONFIG_KEYS = ["readiness_check", "proactive_orchestration"];
+export const CONFIG_DEFAULTS = { schema: CONFIG_SCHEMA, readiness_check: true, proactive_orchestration: true };
 export const RUN_STATUSES = ["planning", "executing", "complete", "blocked"];
 export const TASK_STATUSES = [
   "not_started", "in_progress", "gates_verified",
@@ -157,8 +161,10 @@ export function validateConfig(obj, { partial = false } = {}) {
   for (const k of Object.keys(obj)) {
     if (k !== "schema" && !CONFIG_KEYS.includes(k)) errs.push(`unknown config key "${k}"`);
   }
-  if (!partial || obj.readiness_check !== undefined) {
-    checkType(errs, "readiness_check", obj.readiness_check, isBool, "boolean");
+  // All config keys are booleans. In a full config every key is required; in a
+  // partial (an on-disk override layer) only present keys are checked.
+  for (const k of CONFIG_KEYS) {
+    if (!partial || obj[k] !== undefined) checkType(errs, k, obj[k], isBool, "boolean");
   }
   return { valid: errs.length === 0, errors: errs };
 }

@@ -54,7 +54,16 @@ the config is personal/gitignored, so there is nothing canonical to reset to).
    ```
 5. **Apply the gitignore actions**, then **delete the draft** (only after a successful
    derive, so an interrupted run can still resume from it).
-6. **Report:** topology, members (id · path · stack · gates · knowledge),
+6. **Offer to auto-save reports (deliberate question).** Ask the user once via
+   `AskUserQuestion`: *"Allow orchestration to write engineer/reviewer/architect reports
+   under `.claude/reports/` without a permission prompt each time?"* (Recommend **yes** —
+   reports are personal, gitignored output.) If yes, run
+   `node ${CLAUDE_PLUGIN_ROOT}/lib/settings.mjs allow-reports <workspace-root>` — it adds
+   the single scoped rule `Edit(**/.claude/reports/**)` to `.claude/settings.local.json`
+   (personal, gitignored; the rule covers Write+Edit and every per-member reports tree).
+   It's idempotent and takes effect in a **new session**. If the user declines, do
+   nothing (report writes keep prompting).
+7. **Report:** topology, members (id · path · stack · gates · knowledge),
    anything excluded/flagged and why, the gitignore entries added, and the profile path.
 
 ## `update` — re-detect an existing workspace
@@ -77,9 +86,11 @@ through it:
 
 1. Load the current profile (`workspace.json` / `.local.json`) so you present **real**
    members and their current values. If none exists, offer `init` instead.
-2. **Menu 1 — target surface:** a **plugin setting** (`readiness_check`) or a
+2. **Menu 1 — target surface:** a **plugin setting** (`readiness_check` — the
+   unconfigured-workspace onboarding nudge; or `proactive_orchestration` — when
+   configured, prime the session to route code work through `/orchestrate`) or a
    **profile field** (per member). `AskUserQuestion`.
-3. **If a setting:** ask the value; write with
+3. **If a setting:** ask the value (`true|false`); write with
    `node ${CLAUDE_PLUGIN_ROOT}/lib/config.mjs set <global|workspace> <key> <value>`
    (ask global vs this-workspace). Remind the user it applies in a new session.
 4. **If a profile field:**

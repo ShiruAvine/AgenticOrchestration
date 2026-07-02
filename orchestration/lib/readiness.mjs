@@ -44,7 +44,7 @@ export function readinessState(cwd) {
 
   const prof = readJSON(profile);
   if (prof && validateWorkspace({ ...prof, decisions_needed: undefined }).valid) {
-    return { applicable: true, needsSetup: false, root };
+    return { applicable: true, needsSetup: false, root, profile };
   }
 
   const n = memberCount(topo);

@@ -144,20 +144,31 @@ per skill.** Claude Code discovers the individual skills inside that folder on i
 docs — do **not** bulk-populate it with one entry per skill. One folder link scales to
 any number of skills with zero maintenance.
 
-### Settings (the readiness check)
+### Settings
 
-Plugin behavior has two switches. **Setting 1** (plugin on/off everywhere) is Claude
-Code's built-in `enabledPlugins` — not reinvented here. **Setting 2** (the
-workspace-readiness check that drives the onboarding flow) is plugin-owned in
-`config.mjs`, default ON, cascading global (`~/.claude/orchestration/config.json`) <
-per-workspace (`.claude/orchestration/config.local.json`). It gates two hooks that
-share one deterministic decision (`lib/readiness.mjs`): the `SessionStart` hook
-(`lib/onboarding.mjs`) shows a visible notice when the workspace is unconfigured, and
-the `UserPromptSubmit` hook (`lib/prompt-nudge.mjs`) asks the user how to proceed on
-their first prompt (configure now / skip this session / disable here), gated to once
-per session via a marker under `~/.claude/orchestration/session-nudges/`. The setting
-is read at each hook invocation; "Disable here" writes `readiness_check false` at the
-per-workspace layer, which silences both hooks from the next session on.
+Beyond Claude Code's built-in `enabledPlugins` (plugin on/off everywhere, not reinvented
+here), the plugin owns **two boolean switches** in `config.mjs`, both default ON, cascading
+global (`~/.claude/orchestration/config.json`) < per-workspace
+(`.claude/orchestration/config.local.json`). All hooks share one deterministic decision
+(`lib/readiness.mjs`) and read the settings at each invocation.
+
+- **`readiness_check`** — the **UNconfigured**-workspace onboarding flow. Gates the
+  `SessionStart` notice (`lib/onboarding.mjs`) and the `UserPromptSubmit` question
+  (`lib/prompt-nudge.mjs`, "configure now / skip this session / disable here", once per
+  session via a marker under `~/.claude/orchestration/session-nudges/`). "Disable here"
+  writes `readiness_check false` at the per-workspace layer.
+- **`proactive_orchestration`** — the **CONFIGURED**-workspace behavior. When on, the
+  `SessionStart` hook primes the main session (model-facing context, no user banner) to
+  route non-trivial code work through `/orchestrate` per `ORCHESTRATION.md`. Turn it off
+  when you'd rather invoke `/orchestrate` on purpose and not be steered toward it by
+  default; the workspace stays configured, the hook just stays quiet.
+
+**Auto-saving reports.** A plugin can't grant itself permissions, so report writes
+(engineer/reviewer/architect output under `.claude/reports/`) prompt by default. During
+`init` the command offers to add one scoped rule — `Edit(**/.claude/reports/**)` — to the
+personal, gitignored `.claude/settings.local.json` via `lib/settings.mjs`, so those writes
+stop prompting. `Edit(...)` covers Write+Edit and the `**/…` pattern matches every
+per-member reports tree. It's opt-in, idempotent, and takes effect in a new session.
 
 ## Setup flow
 

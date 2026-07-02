@@ -8,18 +8,16 @@
 // Each validator returns { valid: boolean, errors: string[] } — errors are
 // path-qualified (e.g. "members[2].gates.test: expected string|null").
 
-export const WORKSPACE_SCHEMA = "orchestration/workspace@2";
+export const WORKSPACE_SCHEMA = "orchestration/workspace@3";
 export const RUN_SCHEMA = "orchestration/run@1";
 export const CONFIG_SCHEMA = "orchestration/config@1";
 export const OVERRIDES_SCHEMA = "orchestration/overrides@1";
 
 export const TOPOLOGIES = ["single-repo", "monorepo", "multi-repo"];
-export const ROLES = [
-  "chuck-backend-engineer",
-  "chuck-frontend-engineer",
-  "in-scope:no-matching-agent",
-  "out-of-scope",
-];
+// There is deliberately no per-member "role". Every workspace has ALL specialists
+// available (architect, both engineers, both reviewers); the architect chooses each
+// task's engineer from the task's nature + the member's stack. Members record facts
+// only — never an owning agent — so nothing is ever excluded by classification.
 export const GATE_KEYS = ["convention", "lint", "test", "build"];
 // Fixed per-member knowledge-link slots. Each is a resolved path or null
 // (null = no link OR the file is absent — consumers treat both the same).
@@ -109,11 +107,6 @@ function validateMember(errs, p, m) {
   checkType(errs, `${p}.default_branch`, m.default_branch, isStringOrNull, "string|null");
   checkType(errs, `${p}.stack`, m.stack, isString, "string");
   checkEnum(errs, `${p}.claude_md`, m.claude_md, ["present", "absent"]);
-  checkEnum(errs, `${p}.role`, m.role, ROLES);
-  // role_reason required exactly for the two scope-variant roles
-  if (m.role === "in-scope:no-matching-agent" || m.role === "out-of-scope") {
-    checkType(errs, `${p}.role_reason`, m.role_reason, isString, "string (required for scope-variant roles)");
-  }
   checkType(errs, `${p}.reports_dir`, m.reports_dir, isString, "string");
   if (m.gates == null || typeof m.gates !== "object") {
     errs.push(`${p}.gates: expected an object`);
@@ -174,9 +167,9 @@ export function validateConfig(obj, { partial = false } = {}) {
 
 // The durable, human-authored layer. The profile is derived = detected ⊕ this.
 // Every field is optional (a sparse override), but present fields are strict:
-// fixed slots / roles / gate keys are allowlisted so a typo fails loudly. Only
+// fixed slots / gate keys are allowlisted so a typo fails loudly. Only
 // `knowledge.extra` is free-form (arbitrary link names → string paths).
-const OVERRIDE_MEMBER_KEYS = new Set(["role", "role_reason", "gates", "knowledge", "notes"]);
+const OVERRIDE_MEMBER_KEYS = new Set(["gates", "knowledge", "notes"]);
 
 export function validateOverrides(obj) {
   const errs = [];
@@ -196,8 +189,6 @@ export function validateOverrides(obj) {
     for (const k of Object.keys(mo)) {
       if (!OVERRIDE_MEMBER_KEYS.has(k)) errs.push(`${p}: unknown override key "${k}"`);
     }
-    if (mo.role !== undefined) checkEnum(errs, `${p}.role`, mo.role, ROLES);
-    if (mo.role_reason !== undefined) checkType(errs, `${p}.role_reason`, mo.role_reason, isString, "string");
     if (mo.gates !== undefined) {
       if (mo.gates == null || typeof mo.gates !== "object" || Array.isArray(mo.gates)) {
         errs.push(`${p}.gates: expected an object`);

@@ -14,8 +14,7 @@ This repo is a **Claude Code marketplace** (`agentic-orchestration`) hosting one
 |-----------|-----------|
 | `orchestration-settings-manager` | Read-only meta agent (Phase 0 + config lifecycle): deterministically detects topology, profiles members incl. knowledge links, derives the profile from detected facts ⊕ your overrides, returns only the crucial decisions. |
 | `chuck-architect` | Plans and decomposes a ticket into a reviewable bundle (master plan + per-task contracts). |
-| `chuck-frontend-engineer` | Implements frontend/UI tasks from a contract. |
-| `chuck-backend-engineer` | Implements backend/services/API/DB tasks from a contract. |
+| `chuck-engineer` | The single generic implementer — implements any code task (frontend, backend, services, data, systems, CLI, game/engine) from a contract, learning the stack from the member's CLAUDE.md. |
 | `chuck-plan-reviewer` | Reviews plan bundles (per-task rubric + global synthesis). |
 | `chuck-code-reviewer` | Reviews completed work (per-task rubric + integration synthesis). |
 | `/orchestrate-config` | Manage your personal config: `init` (detect + derive), `show`, `set` (guided menus — no hand-typed paths), `update` (re-detect + reconcile). |
@@ -60,7 +59,7 @@ The orchestrator runs against a **workspace**, which is *not* assumed to be one 
 | `monorepo` | one repo, many sub-projects | `<repo>/.claude/orchestration/workspace.local.json` (+ rendered `.md`) |
 | `multi-repo` | a non-repo parent folder of independent repos opened together | `<workspace-root>/.claude/orchestration/workspace.json` (+ rendered `.md`) |
 
-Run `/orchestrate-config init` once per workspace (or whenever it changes). It dispatches `orchestration-settings-manager` to detect the topology and profile every member deterministically, asks you **only the crucial decisions** (ambiguous topology, out-of-scope exclusions, missing `CLAUDE.md`, ambiguous role), records your answers as durable overrides, and derives the profile — recording each member's stack, gate commands, role, knowledge links, and any per-case handling (e.g. "this member has no lint script — skip that gate"). It also adds the `.gitignore` entries that keep the profile and reports personal. After that, `/orchestrate` reads the profile and tags each task with an `ASSIGNED_REPO`, so one run can span multiple repos when a feature crosses them. Re-run `/orchestrate-config update` to re-detect and reconcile without losing your overrides.
+Run `/orchestrate-config init` once per workspace (or whenever it changes). It dispatches `orchestration-settings-manager` to detect the topology and profile every member deterministically, asks you **only the crucial decisions** (ambiguous topology, missing `CLAUDE.md`, unresolved gates), records your answers as durable overrides, and derives the profile — recording each member's stack, gate commands, knowledge links, and any per-case handling (e.g. "this member has no lint script — skip that gate"). There is no per-member role: every workspace has all specialists available, and the architect assigns each task's engineer from the task's nature and the member's stack. It also adds the `.gitignore` entries that keep the profile and reports personal. After that, `/orchestrate` reads the profile and tags each task with an `ASSIGNED_REPO`, so one run can span multiple repos when a feature crosses them. Re-run `/orchestrate-config update` to re-detect and reconcile without losing your overrides.
 
 ## Wire it into a project
 

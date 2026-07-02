@@ -97,7 +97,7 @@ Return findings in this shape:
 
 ```
 TASK: <task contract path or "inline">
-ENGINEER: chuck-frontend-engineer | chuck-backend-engineer
+ENGINEER: chuck-engineer
 DIFF SCOPE: <as provided>
 
 CHECKS:

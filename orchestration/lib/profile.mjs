@@ -39,20 +39,9 @@ function cmdValidate(file) {
 
 // --- render -----------------------------------------------------------------
 
-function activeRoles(members) {
-  const roles = new Set(members.filter((m) => m.role.startsWith("chuck-")).map((m) => m.role));
-  return [...roles];
-}
-
 function perCaseRows(members) {
   const rows = [];
   for (const m of members) {
-    if (m.role === "in-scope:no-matching-agent") {
-      rows.push([`${m.id} (${m.role_reason})`,
-        `IN SCOPE but no matching specialist agent. \`/orchestrate\` must flag this before assigning work (no fitting \`chuck-*\` role; gates usually absent).`]);
-    } else if (m.role === "out-of-scope") {
-      rows.push([`${m.id} (${m.role_reason})`, `Excluded from orchestration (out-of-scope: ${m.role_reason}).`]);
-    }
     for (const n of m.notes || []) rows.push([m.id, n]);
   }
   return rows;
@@ -107,18 +96,17 @@ function cmdRender(file, out) {
     L.push(`  git: ${m.git}   default_branch: ${m.default_branch ?? "—"}`);
     L.push(`  stack: ${m.stack}`);
     L.push(`  claude_md: ${m.claude_md}`);
-    L.push(`  role: ${m.role}${m.role_reason ? ` (${m.role_reason})` : ""}`);
     L.push(`  gates: ${gateLine(m.gates)}`);
     L.push(`  knowledge: ${knowledgeLine(m.knowledge)}`);
     L.push(`  reports_dir: ${m.reports_dir}`);
     if (m.notes && m.notes.length) L.push(`  notes: ${m.notes.join("; ")}`);
   }
   L.push("");
-  L.push("## Active roles");
-  const ar = activeRoles(ws.members);
-  L.push(ar.length ? `- ${ar.join("\n- ")}` : "- (none active)");
-  const flagged = ws.members.filter((m) => m.role === "in-scope:no-matching-agent");
-  if (flagged.length) L.push(`NOTE: ${flagged.map((m) => m.id).join(", ")} in scope but NO matching agent — see Per-case handling.`);
+  L.push("## Specialists");
+  L.push("All specialists are available in every workspace: chuck-architect, chuck-engineer (the single");
+  L.push("generic implementer for all code), chuck-plan-reviewer, chuck-code-reviewer. There is no per-member");
+  L.push("role, and no frontend/backend split — the architect assigns each task an ASSIGNED_REPO and lets");
+  L.push("chuck-engineer learn the member's stack from its CLAUDE.md.");
   L.push("");
   L.push("## Defaults");
   L.push(`architect: ${ws.defaults.architect}`);
@@ -126,9 +114,14 @@ function cmdRender(file, out) {
   L.push(`human_gate: ${ws.defaults.human_gate}`);
   L.push("");
   L.push("## Per-case handling");
-  L.push("| Case | Rule |");
-  L.push("|------|------|");
-  for (const [c, r] of perCaseRows(ws.members)) L.push(`| ${c} | ${r} |`);
+  const caseRows = perCaseRows(ws.members);
+  if (caseRows.length === 0) {
+    L.push("(none)");
+  } else {
+    L.push("| Case | Rule |");
+    L.push("|------|------|");
+    for (const [c, r] of caseRows) L.push(`| ${c} | ${r} |`);
+  }
   L.push("");
   L.push("## How to run");
   L.push(howToRun(ws));

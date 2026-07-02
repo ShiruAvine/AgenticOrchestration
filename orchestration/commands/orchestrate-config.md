@@ -44,8 +44,8 @@ the config is personal/gitignored, so there is nothing canonical to reset to).
    ```
    node ${CLAUDE_PLUGIN_ROOT}/lib/overrides.mjs set <overrides> <member> <field> <value>
    ```
-   (`field` ∈ `role` | `role_reason` | `gates.<key>` | `knowledge.<slot>` |
-   `knowledge.extra.<name>` | `note`.) Only record answers that differ from the detected
+   (`field` ∈ `gates.<key>` | `knowledge.<slot>` | `knowledge.extra.<name>` | `note`.)
+   Only record answers that differ from the detected
    default — an accepted default needs no override.
 4. **Derive + render the profile:**
    ```
@@ -54,7 +54,7 @@ the config is personal/gitignored, so there is nothing canonical to reset to).
    ```
 5. **Apply the gitignore actions**, then **delete the draft** (only after a successful
    derive, so an interrupted run can still resume from it).
-6. **Report:** topology, in-scope members (id · path · stack · gates · role · knowledge),
+6. **Report:** topology, members (id · path · stack · gates · knowledge),
    anything excluded/flagged and why, the gitignore entries added, and the profile path.
 
 ## `update` — re-detect an existing workspace
@@ -84,11 +84,14 @@ through it:
    (ask global vs this-workspace). Remind the user it applies in a new session.
 4. **If a profile field:**
    - **Menu 2 — member:** pick from the real members.
-   - **Menu 3 — what to set:** `role` · a knowledge slot (`claude_md` / `skills` /
+   - **Menu 3 — what to set:** a knowledge slot (`claude_md` / `skills` /
      `rubrics`) · add/edit a custom **extra** link · a `gate` · append a `note`.
-   - **Value step (contextual):** `role` → pick from the valid roles; a slot/gate/link
+   - **Value step (contextual):** a slot/gate/link
      path → ask the path and **offer to check it exists on disk** (Glob/Read); an
-     `extra` link → ask the link **name** then the path.
+     `extra` link → ask the link **name** then the path. **The `skills` slot is the
+     single `.claude/skills` FOLDER path — never a list, never one entry per skill
+     (Claude Code discovers the skills inside it automatically). Do not bulk-add skills
+     to `extra` either.**
    - **Write** via the deterministic writer:
      `node ${CLAUDE_PLUGIN_ROOT}/lib/overrides.mjs set <overrides> <member> <field> <value>`
      (resolve `<field>` yourself from the menu choices — the user never types it).

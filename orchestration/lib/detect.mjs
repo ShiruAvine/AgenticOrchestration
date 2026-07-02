@@ -6,7 +6,7 @@
 // a `decisions_needed` entry, never an invented value.
 //
 // Usage:   node detect.mjs [workspace-root]      (defaults to cwd)
-// Output:  a workspace.json object (schema orchestration/workspace@2) on stdout,
+// Output:  a workspace.json object (schema orchestration/workspace@3) on stdout,
 //          with `decisions_needed` populated. The command/agent layer resolves
 //          those decisions into overrides.local.json and derives the profile
 //          via lib/overrides.mjs (detected ⊕ overrides).
@@ -179,16 +179,6 @@ function knowledgeLinks(abs, rel) {
   };
 }
 
-function classifyRole(stack) {
-  if (stack.isFront && stack.isBack)
-    return { role: "chuck-backend-engineer", ambiguous: true };
-  if (stack.isFront) return { role: "chuck-frontend-engineer" };
-  if (stack.isBack) return { role: "chuck-backend-engineer" };
-  if (stack.isResearch) return { role: "out-of-scope", role_reason: "research", noAgent: true };
-  if (stack.isInfra) return { role: "out-of-scope", role_reason: "infra", noAgent: true };
-  return { role: "out-of-scope", role_reason: "unknown stack", noAgent: true };
-}
-
 function profileMember(root, rel, topology) {
   const abs = path.join(root, rel === "." ? "" : rel);
   const notes = [];
@@ -199,13 +189,18 @@ function profileMember(root, rel, topology) {
   const stack = classifyStack(abs);
   const claudeMd = exists(path.join(abs, "CLAUDE.md"));
   const gates = extractGates(stack.pkg && stack.pkg.scripts, notes);
-  const roleInfo = classifyRole(stack);
+  // A "code" member is one an engineering specialist would implement in (it has a
+  // recognized language stack). infra-only / unknown members are still included and
+  // fully usable — they just get no gate/CLAUDE.md prompts, since there is nothing
+  // standard to ask about. No member is ever classified into an owning agent: the
+  // architect picks each task's engineer from the task's nature + this stack.
+  const isCode = ["node", "python", "go"].includes(stack.kind);
 
   if (branch && !DEFAULT_BRANCHES.has(branch))
     notes.push(`on branch "${branch}" (not a long-lived default) — re-verify diff baseline per run`);
-  if (!claudeMd && roleInfo.role.startsWith("chuck-"))
+  if (!claudeMd && isCode)
     notes.push("no CLAUDE.md — specialists operate with reduced project context");
-  if (gates.lint == null && gates.convention == null && roleInfo.role.startsWith("chuck-"))
+  if (gates.lint == null && gates.convention == null && isCode)
     notes.push("no lint/format script — runs test+build gates only");
 
   const reportsDir = topology === "multi-repo"
@@ -219,47 +214,28 @@ function profileMember(root, rel, topology) {
     default_branch: branch,
     stack: stack.label,
     claude_md: claudeMd ? "present" : "absent",
-    role: roleInfo.role,
     reports_dir: reportsDir,
     gates,
     knowledge: knowledgeLinks(abs, rel),
     notes,
   };
-  if (roleInfo.role_reason) member.role_reason = roleInfo.role_reason;
-  return { member, roleInfo, claudeMd };
+  return { member, claudeMd, isCode };
 }
 
 // --- decisions --------------------------------------------------------------
 
-function decisionsFor(member, roleInfo, claudeMd) {
+function decisionsFor(member, claudeMd, isCode) {
   const out = [];
-  if (roleInfo.ambiguous) {
-    out.push({
-      member: member.id,
-      question: `${member.id} has both frontend and backend deps — which engineer owns it?`,
-      recommended: "chuck-backend-engineer",
-      options: ["chuck-backend-engineer", "chuck-frontend-engineer", "split"],
-    });
-  }
-  if (roleInfo.noAgent) {
-    const reason = member.role_reason;
-    out.push({
-      member: member.id,
-      question: `${member.id} (${reason}) fits no active specialist agent — exclude, or keep in scope flagged?`,
-      recommended: `out-of-scope: ${reason}`,
-      options: [`out-of-scope: ${reason}`, `in-scope:no-matching-agent (${reason})`],
-    });
-  }
-  if (!claudeMd && member.role.startsWith("chuck-")) {
+  if (!claudeMd && isCode) {
     out.push({
       member: member.id,
       question: `${member.id} has no CLAUDE.md — how should specialists bind to it?`,
       recommended: "proceed with reduced context",
-      options: ["generate minimal CLAUDE.md", "proceed with reduced context", "exclude"],
+      options: ["generate minimal CLAUDE.md", "proceed with reduced context"],
     });
   }
   for (const k of ["test", "build"]) {
-    if (member.gates[k] == null && member.role.startsWith("chuck-")) {
+    if (member.gates[k] == null && isCode) {
       out.push({
         member: member.id,
         question: `${member.id} has no detectable ${k} gate — confirm "none" or provide a command?`,
@@ -288,9 +264,9 @@ function detect(rootArg) {
   const members = [];
   const decisions = [];
   for (const rel of relPaths) {
-    const { member, roleInfo, claudeMd } = profileMember(topo.root, rel, topo.topology);
+    const { member, claudeMd, isCode } = profileMember(topo.root, rel, topo.topology);
     members.push(member);
-    decisions.push(...decisionsFor(member, roleInfo, claudeMd));
+    decisions.push(...decisionsFor(member, claudeMd, isCode));
   }
 
   return {
@@ -323,4 +299,4 @@ if (isMain) {
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 }
 
-export { detect, detectTopology, classifyStack, classifyRole, extractGates, knowledgeLinks };
+export { detect, detectTopology, classifyStack, extractGates, knowledgeLinks };

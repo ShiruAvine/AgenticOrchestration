@@ -47,10 +47,10 @@ A cited file, function, or pattern that does not exist → **critical** (record 
 ### 3. Agent and member assignment
 
 Read the `ASSIGNED_REPO` member's `CLAUDE.md` domain map. Confirm:
-- `ASSIGNED_REPO` names a real in-scope workspace member (per the workspace profile)
+- `ASSIGNED_REPO` names a real workspace member (per the workspace profile)
 - Every path in `FILES_AFFECTED` lives inside that member; none crosses into another member
-- `ASSIGNED_AGENT` matches the directory of files in `FILES_AFFECTED`
-- No path in `SCOPE_BOUNDARIES.touch` falls outside the assigned agent's domain
+- `ASSIGNED_AGENT` fits the task type (`chuck-engineer` for a code-implementation task)
+- Every path in `SCOPE_BOUNDARIES.touch` lives inside the member and matches the CLAUDE.md domain map
 - No path appears in both `touch` and `do-not-touch`
 
 Wrong agent for the work → **critical**.

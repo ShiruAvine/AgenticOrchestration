@@ -20,10 +20,10 @@
 //   node overrides.mjs validate <overrides.json>
 //   node overrides.mjs show     <overrides.json>
 //
-// <field> ∈ role | role_reason | gates.<key> | knowledge.<slot>
-//            | knowledge.extra.<name> | note
-// Fixed slots/roles/gate-keys are allowlisted; only knowledge.extra.<name> is
+// <field> ∈ gates.<key> | knowledge.<slot> | knowledge.extra.<name> | note
+// Fixed slots/gate-keys are allowlisted; only knowledge.extra.<name> is
 // free-form. A nullable value can be cleared with the literal "null"/"none".
+// (There is no `role` override — members have no owning agent; see schema.mjs.)
 // Note: `set … note <text>` APPENDS; there is no per-note addressing, so
 // `unset … note` clears ALL notes for that member.
 
@@ -31,7 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  OVERRIDES_SCHEMA, ROLES, GATE_KEYS, KNOWLEDGE_SLOTS,
+  OVERRIDES_SCHEMA, GATE_KEYS, KNOWLEDGE_SLOTS,
   validateOverrides, validateWorkspace,
 } from "./schema.mjs";
 
@@ -68,8 +68,6 @@ function writeValidated(file, ov) {
 // --- field grammar (engine-internal; the guided command resolves to this) ---
 
 function parseField(field) {
-  if (field === "role") return { kind: "role" };
-  if (field === "role_reason") return { kind: "role_reason" };
   if (field === "note") return { kind: "note" };
   if (field.startsWith("gates.")) {
     const key = field.slice(6);
@@ -86,7 +84,7 @@ function parseField(field) {
     if (!KNOWLEDGE_SLOTS.includes(slot)) die(`unknown knowledge slot "${slot}" (known: ${KNOWLEDGE_SLOTS.join(", ")})`);
     return { kind: "slot", slot };
   }
-  die(`unknown field "${field}" (role | role_reason | gates.<key> | knowledge.<slot> | knowledge.extra.<name> | note)`);
+  die(`unknown field "${field}" (gates.<key> | knowledge.<slot> | knowledge.extra.<name> | note)`);
 }
 const nullable = (raw) => (raw === "null" || raw === "none" || raw === "") ? null : raw;
 
@@ -107,10 +105,6 @@ function cmdSet(file, member, field, raw) {
   const ov = readOverrides(file, { allowMissing: true });
   const m = (ov.members[member] ||= {});
   switch (d.kind) {
-    case "role":
-      if (!ROLES.includes(raw)) die(`role must be one of ${ROLES.join(", ")}`);
-      m.role = raw; break;
-    case "role_reason": m.role_reason = raw; break;
     case "gate": (m.gates ||= {})[d.key] = nullable(raw); break;
     case "slot": (m.knowledge ||= {})[d.slot] = nullable(raw); break;
     case "extra": (m.knowledge ||= {}); (m.knowledge.extra ||= {})[d.name] = raw; break;
@@ -127,8 +121,6 @@ function cmdUnset(file, member, field) {
   const m = ov.members[member];
   if (!m) die(`no overrides for member "${member}"`);
   switch (d.kind) {
-    case "role": delete m.role; break;
-    case "role_reason": delete m.role_reason; break;
     case "gate": if (m.gates) delete m.gates[d.key]; break;
     case "slot": if (m.knowledge) delete m.knowledge[d.slot]; break;
     case "extra": if (m.knowledge && m.knowledge.extra) delete m.knowledge.extra[d.name]; break;
@@ -149,9 +141,6 @@ export function applyOverrides(detected, overrides) {
   for (const [id, mo] of Object.entries((overrides && overrides.members) || {})) {
     const m = byId.get(id);
     if (!m) { conflicts.push({ member: id, reason: "override targets a member no longer present in detection" }); continue; }
-    if (mo.role !== undefined) m.role = mo.role;
-    if (mo.role_reason !== undefined) m.role_reason = mo.role_reason;
-    if (typeof m.role === "string" && m.role.startsWith("chuck-")) delete m.role_reason;
     if (mo.gates) { m.gates = { ...m.gates }; for (const [k, v] of Object.entries(mo.gates)) m.gates[k] = v; }
     if (mo.knowledge) {
       m.knowledge = m.knowledge || { claude_md: null, skills: null, rubrics: null, extra: {} };
@@ -187,7 +176,6 @@ function cmdShow(file) {
   for (const id of ids) {
     process.stdout.write(`- ${id}:\n`);
     const m = ov.members[id];
-    if (m.role !== undefined) process.stdout.write(`    role: ${m.role}${m.role_reason ? ` (${m.role_reason})` : ""}\n`);
     if (m.gates) for (const [k, v] of Object.entries(m.gates)) process.stdout.write(`    gates.${k}: ${v}\n`);
     if (m.knowledge) {
       for (const slot of KNOWLEDGE_SLOTS) if (m.knowledge[slot] !== undefined) process.stdout.write(`    knowledge.${slot}: ${m.knowledge[slot]}\n`);

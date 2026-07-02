@@ -1,6 +1,6 @@
 # Orchestration Workflow
 
-The main Claude session acts as **orchestrator** for any non-trivial software task. Its job is to gatekeep, dispatch, integrate, and surface decisions to the user — NOT to plan or implement. Planning and decomposition belong to `chuck-architect`. Implementation belongs to engineering specialists.
+The main Claude session acts as **orchestrator** for any non-trivial software task. Its job is to gatekeep, dispatch, integrate, and surface decisions to the user — NOT to plan or implement. Planning and decomposition belong to `chuck-architect`. Execution belongs to the agent each task is assigned to (`ASSIGNED_AGENT`).
 
 This workflow is generic across projects. Project-specific bindings (where code lives, which framework, which convention check to run) are defined in each member's `CLAUDE.md`. Workspace-level bindings (topology, which repos are members, where reports go, per-member gate commands) are defined in the **workspace profile** — see `WORKSPACE.md` and Phase 0 below.
 
@@ -28,11 +28,14 @@ When in doubt, ask the user — never silently decide to skip.
 
 - **chuck-architect** — produces plan bundles (master plan + per-task contracts)
 - **chuck-plan-reviewer** — reviews plan bundles using per-task skill checks + global synthesis
-- **chuck-frontend-engineer** — frontend/UI/client-side implementation
-- **chuck-backend-engineer** — backend/services/API/database implementation
+- **chuck-engineer** — the single generic implementer for **all** code work (frontend, backend, services, data, systems, CLI, game/engine — whatever the repo is)
 - **chuck-code-reviewer** — reviews completed engineering work using per-task `code-review-rubric` + global integration synthesis
 
 Specialists are generic. They learn each project's specifics at runtime by reading the project's `CLAUDE.md`. Do not bake project-specific knowledge into specialist prompts — add it to `CLAUDE.md` instead.
+
+**All specialists are available in every workspace, and there is no per-member "role."** Every task names the agent that executes it in `ASSIGNED_AGENT`, and the orchestrator **dispatches whatever that field names** — never a hardcoded agent. Today the only implementer is **`chuck-engineer`**, the single generic agent for all code work (the architect no longer splits frontend vs backend), so code tasks carry `ASSIGNED_AGENT: chuck-engineer`. The field is the seam for any future non-code task type (e.g. a documentation or presentation producer) — such tasks would name their own agent and flow through the same steps with no workflow change. No member is ever excluded by classification — an unusual stack (game/engine, data, an unsupported language) is worked by `chuck-engineer` learning it from the member's `CLAUDE.md`.
+
+**Communicating with the user.** Your own user-facing messages (surfacing plans, per-task verification, integration summaries) should be scannable and link-forward: lead with the decision or ask, link the actual artifact files rather than pasting them, and keep a plainer register than the dense agent-to-agent reports. (The subagents follow their own preloaded `report-style` skill; this note is for the orchestrator's voice.)
 
 ## Orchestrator workflow
 
@@ -40,7 +43,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
    - **Load the workspace profile** (a personal, gitignored file). Read `workspace.json` — the source of truth, always under `<workspace-root>/.claude/orchestration/` (`workspace.json` for multi-repo, `workspace.local.json` for single-repo / monorepo) — not the rendered `.md`.
    - **If no profile exists**, run `/orchestrate-config init` first (detect topology → confirm with user → derive profile). Do not proceed without one — guessing topology is what drives drift. See `WORKSPACE.md`.
    - **If a profile exists**, read it. If the member set or branches have visibly drifted from it, note that and offer to re-run setup.
-   - **Resolve this run's scope.** From the profile's in-scope members, determine which the ticket touches — by the user's explicit statement, by inference, or by asking. The active member set may be one member, several, or all. Each task will carry an `ASSIGNED_REPO` naming its member (omittable for `single-repo`).
+   - **Resolve this run's scope.** From the profile's members, determine which the ticket touches — by the user's explicit statement, by inference, or by asking. The active member set may be one member, several, or all. Each task will carry an `ASSIGNED_REPO` naming its member (omittable for `single-repo`).
 
 1. **Read each active member's `CLAUDE.md`** for the stack, domain map, and check commands. Use the gate commands recorded in the profile for each member.
 
@@ -55,21 +58,25 @@ Specialists are generic. They learn each project's specifics at runtime by readi
    - **Architect path** → run "Planning phase" below until a user-approved bundle is in hand.
    - **Skip-architect path** → run "Direct dispatch" below to draft a single inline contract.
 
-5. **Engineering dispatch — sequential per-task gate.** Whether the input is an approved bundle (from #4 architect path) or an inline contract (from #4 skip path):
+5. **Task dispatch.** Whether the input is an approved bundle (from #4 architect path) or an inline contract (from #4 skip path):
    - **Open the run manifest.** Before dispatching anything, create it with `node lib/manifest.mjs init <run.json> <spec.json>` — that captures a **per-member baseline** for every active member (it runs `git rev-parse HEAD` itself) and seeds the task list. The manifest is the run's source of truth for status and diff baselines; update it with `lib/manifest.mjs set`/`gates`/`status` at every transition (never by hand) so the run stays valid and resumable.
-   - **Confirm execution order with the user once.** The architect's plan provides the order; the user can adjust. The dependency graph defines what *could* run in parallel — by default it does not.
-   - **For each task in order** (skip any the manifest already marks `done`):
-     1. **Dispatch** the matching engineering specialist (`chuck-frontend-engineer` or `chuck-backend-engineer`) via the `Agent` tool. For task-file dispatch, pass the task file path AND the bundle path. For inline dispatch, pass the contract directly. Always pass the task's `ASSIGNED_REPO` (the member it lives in) so the engineer operates in the right repo and uses that member's gates from the profile. Mark the task `in_progress` in the manifest.
-     2. **Read the specialist's report** (in the assigned member's `reports_dir`, `.../chuck-<agent>/<ISO-timestamp>.md`). Record its path in the manifest.
+   - **Choose the execution mode — ask the user once (skip the question for a single-task run; it is identical either way):**
+     - **Mode A — review after each task (RECOMMENDED, sequential).** Tasks run one at a time in plan order; after each task's automated gate + code review you present it to the user and wait for verification before the next task starts. **No parallelism.** This is the recommended default: real plans shift as tasks land (new edge cases, approach corrections), and only stopping between tasks lets you fold that back in before building further.
+     - **Mode B — run all, then review (parallel where deps allow).** Tasks run to completion, parallelizing any the dependency graph allows; automated gates + per-task code review still run on every task, but the **user** verification is deferred to a single review at the end. Faster, at the cost of mid-run course-correction — best when the plan is solid and loosely coupled. **Even in Mode B, a `reject` verdict or a failing gate HALTS the run and surfaces to the user immediately** — never stack more tasks on a broken foundation.
+   - **Confirm execution order with the user once.** The architect's plan provides the order; the user can adjust.
+   - **Per-task mechanics — identical in both modes.** For each task (skip any the manifest already marks `done`):
+     1. **Dispatch the task's `ASSIGNED_AGENT`** via the `Agent` tool — dispatch whatever the field names, don't assume (today that is `chuck-engineer` for code tasks). For task-file dispatch, pass the task file path AND the bundle path. For inline dispatch, pass the contract directly. Always pass the task's `ASSIGNED_REPO` (the member it lives in) so the agent operates in the right repo and uses that member's gates from the profile. Mark the task `in_progress` in the manifest.
+     2. **Read the assigned agent's report** (in the assigned member's `reports_dir`, `.../<assigned-agent>/<ISO-timestamp>.md`). Record its path in the manifest.
      3. **Independently verify the gates.** Do NOT trust the engineer's self-reported `CHECKS`. Run `node lib/gates.mjs <workspace.json> <ASSIGNED_REPO>` — it executes that member's recorded gate commands in the member's path and emits observed `pass|fail|n/a` per gate (it auto-uses a non-mutating variant: `--fix` dropped, `--write`→`--check`; pass `--mutate` if you deliberately want the mutating form, whose edits then join this task's diff). Pipe the `observed` block into `lib/manifest.mjs gates <run.json> <task-id> '<json>'`. The hard gate keys off *this observed* result, not the report; a self-report/observed mismatch is itself a finding to surface.
-     4. **Dispatch `chuck-code-reviewer` for this single task.** Pass the task file path, the engineer's report path, the task's `ASSIGNED_REPO`, the manifest's observed gate results, and the diff scope — scoped to that member with the manifest's baseline (`git -C <member-path> diff <task-baseline>..HEAD` covering only this task's files). Reviewer runs `code-review-rubric` once and writes a review to the member's `reports_dir/chuck-code-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`. Record the review path + verdict in the manifest.
-     5. **Handle the verdict internally:** `approve` → proceed to the next sub-step; `revise` → build a fix contract from the critical findings and re-dispatch the engineer (cap 2 rounds; increment `fix_rounds` in the manifest); `reject` → surface to the user immediately, do not patch.
-     6. **User verification gate.** Surface to the user: what changed (file list + diff summary), the observed gate results, the reviewer's findings, and the verdict. Wait for the user to ✅ approve (mark the task `done` in the manifest, continue to next task), ❌ request revisions (build a fix contract from the user's feedback and re-dispatch the engineer), or pause. **Do not start the next task until the user explicitly verifies.**
-   - **Parallel-by-opt-in batches.** If the plan's dependency graph allows two or more tasks to run concurrently, ASK the user before that batch: *"Tasks X and Y are independent — run together (one combined review + verification gate covering both) or serialize them?"* The user picks per batch. When run together, treat the batch as one unit: dispatch in parallel, wait for all, verify each member's gates, run a single combined code review covering all of them, single verification gate.
+     4. **Dispatch `chuck-code-reviewer` for this task.** Pass the task file path, the engineer's report path, the task's `ASSIGNED_REPO`, the manifest's observed gate results, and the diff scope — scoped to that member with the manifest's baseline (`git -C <member-path> diff <task-baseline>..HEAD` covering only this task's files). Reviewer runs `code-review-rubric` once and writes a review to the member's `reports_dir/chuck-code-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`. Record the review path + verdict in the manifest.
+     5. **Handle the verdict:** `approve` → proceed; `revise` → build a fix contract from the critical findings and re-dispatch the task's `ASSIGNED_AGENT` (cap 2 rounds; increment `fix_rounds`); `reject` → **HALT and surface to the user immediately, in both modes** — do not patch and do not start further tasks.
+   - **The mode changes only the USER verification cadence:**
+     - **Mode A (sequential):** after the per-task mechanics for a task, run a **user verification gate** — surface what changed (file list + diff summary), observed gates, reviewer findings, and verdict; link the report files. Wait for ✅ approve (mark the task `done`, continue), ❌ request revisions (fix contract from the user's feedback → re-dispatch), or pause. **Do not start the next task until the user verifies.** Tasks are strictly sequential — no parallel batches.
+     - **Mode B (autonomous):** as each task's automated review passes, mark it `done` and continue; **parallelize independent tasks** (dispatch together, wait for all, verify each member's gates, run one combined `chuck-code-reviewer` per batch). After **all** tasks complete, run a **single final user verification** covering the whole run — file lists + per-member diffs, observed gates, and the reviewer findings — folded together with the integration review below.
 
 6. **(Reserved.)** Per-specialist report handling is now part of step 5.
 
-7. **Optional integration review.** After all tasks are user-verified, offer the user an integration review pass: a final `chuck-code-reviewer` dispatch with the full bundle and the cumulative diff. Use the manifest's per-member baselines: for a single-member run, that is `git -C <member-path> diff <bundle-baseline>..HEAD`; for a multi-member run, pass one diff per touched member (each with its own baseline) so the reviewer can check interface consistency *across* members. Reviewer runs a global synthesis pass to catch cross-task / cross-member interface drift that per-task review couldn't see. Record the integration-review path in the manifest. Default off — propose it for bundles with ≥3 tasks, known cross-cutting interfaces, or any run that spans more than one member; skip when obviously unnecessary.
+7. **Optional integration review.** After all tasks are complete (Mode A: each already user-verified; Mode B: each automated-reviewed), offer the user an integration review pass: a final `chuck-code-reviewer` dispatch with the full bundle and the cumulative diff. In **Mode B** this is folded into the single final user verification. Use the manifest's per-member baselines: for a single-member run, that is `git -C <member-path> diff <bundle-baseline>..HEAD`; for a multi-member run, pass one diff per touched member (each with its own baseline) so the reviewer can check interface consistency *across* members. Reviewer runs a global synthesis pass to catch cross-task / cross-member interface drift that per-task review couldn't see. Record the integration-review path in the manifest. Default off — propose it for bundles with ≥3 tasks, known cross-cutting interfaces, or any run that spans more than one member; skip when obviously unnecessary.
 
 8. **Integrate.** Since work has been verified incrementally, this step mainly summarizes the completed branch state, calls out remaining escalations, and identifies follow-ups. Mark the manifest `STATUS: complete`.
 
@@ -77,7 +84,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 ## Run manifest
 
-A run manifest is the on-disk **source of truth for one orchestration run**: the diff baselines and the per-task status. The orchestrator creates it at the start of engineering dispatch and updates it at every transition. It is what makes a run resumable (see "Resuming an interrupted run") and what removes the old hand-threading of git baselines between steps.
+A run manifest is the on-disk **source of truth for one orchestration run**: the diff baselines and the per-task status. The orchestrator creates it at the start of task dispatch and updates it at every transition. It is what makes a run resumable (see "Resuming an interrupted run") and what removes the old hand-threading of git baselines between steps.
 
 **Location:** architect path → `<bundle>/run.json` (alongside `plan.md`). Skip-architect path → `<workspace-reports>/runs/<ISO-timestamp>/run.json`, with the inline contract saved beside it as `contract.md`. (`<workspace-reports>` is `<workspace-root>/.claude/reports` for every topology.) The manifest lives in the gitignored reports tree, so it is personal and never committed.
 
@@ -99,21 +106,25 @@ execution_order:[…], tasks:[{id,repo}] }` and fills the rest (baselines via gi
 tasks `not_started`). The shape it maintains: top-level `run/ticket/topology/bundle/
 status/updated`, `active_members[].baseline`, `execution_order`, `tasks[]` (each with
 `status`, `engineer_report`, `review`, `verdict`, `gates_observed` = the ORCHESTRATOR's
-observed result not the engineer's claim, `user_verified`, `fix_rounds`), and
+observed result not the assigned agent's claim, `user_verified`, `fix_rounds`), and
 `integration_review`.
 
 ## Planning phase (architect path)
 
-1. **Dispatch chuck-architect** with the user's request, any constraints, and the active member set (with each member's path + gate commands from the profile). Architect reads each active member, explores relevant code, decomposes the work into tasks (each assigned to a specialist *and* an `ASSIGNED_REPO` member, with order and dependencies), and writes a bundle. The bundle is workspace-level: it goes to `<workspace-root>/.claude/reports/chuck-architect/<ISO-timestamp>/` (uniform across topologies). Bundle contains `plan.md` (master) plus one `task-NN-<slug>.md` per task. Plan-review reports live alongside the bundle in the same workspace-level reports tree; engineer and code-review reports live in each touched member's own `reports_dir`.
+**The human reviews the plan first; the plan-reviewer is a second opinion afterward.** The user owns high-level scope and intent, so they see the plan before any automated review runs — the plan-reviewer's job is then to catch the lower-level gaps the user is likely to miss, against the plan the user has actually endorsed. Running it earlier wastes a pass on a plan that is about to change.
 
-2. **Dispatch chuck-plan-reviewer** with the bundle path. Reviewer runs the `plan-review-rubric` skill once per task (deterministic per-task checks) plus a global synthesis pass (cross-task issues), and writes a single review file to `.claude/reports/chuck-plan-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`.
+1. **Dispatch chuck-architect** with the user's request, any constraints, and the active member set (with each member's path + gate commands from the profile). Architect reads each active member, explores relevant code, decomposes the work into tasks (each with an `ASSIGNED_AGENT` and an `ASSIGNED_REPO` member, with order and dependencies), and writes a bundle. The bundle is workspace-level: it goes to `<workspace-root>/.claude/reports/chuck-architect/<ISO-timestamp>/` (uniform across topologies). Bundle contains `plan.md` (master) plus one `task-NN-<slug>.md` per task. Plan-review reports live alongside the bundle in the same workspace-level reports tree; engineer and code-review reports live in each touched member's own `reports_dir`.
 
-3. **Handle the verdict:**
-   - `revise` → re-dispatch architect with the review feedback. Loop at most twice; escalate to the user if still unacceptable.
-   - `reject` → stop and surface to the user. Rejected plans signal a misunderstanding — don't loop, get human input.
-   - `approve` → surface plan + review to the user for final approval.
+2. **User review of the plan (first).** Present the bundle to the user with **clickable links to `plan.md` and each `task-NN-*.md`** so they read the real contracts, not a summary. Ask for feedback on the individual tasks and the overall approach. If the user wants changes → re-dispatch the architect with their feedback and re-present. Loop until the user approves the plan.
 
-4. **User approval.** Present the bundle and review to the user. They approve, request specific revisions (re-dispatch architect with the requested changes), or reject. Once approved, the bundle is the source of truth — proceed to engineering dispatch (workflow step 5 above).
+3. **Dispatch chuck-plan-reviewer (after user approval).** Pass the approved bundle path. Reviewer runs the `plan-review-rubric` skill once per task (deterministic per-task checks) plus a global synthesis pass (cross-task issues), and writes a single review file to `.claude/reports/chuck-plan-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`.
+
+4. **Surface the review to the user as a second opinion.** Link the review file and summarize its findings — these are gaps the user may have missed, not an automated gate. The user decides:
+   - findings worth acting on → re-dispatch the architect with them, then back to step 2 (the user re-approves the changed plan).
+   - findings they accept/waive, or a clean `approve` → give the final go.
+   Do **not** loop the architect and plan-reviewer automatically without the human; the human directs what happens to the findings.
+
+5. **Final go.** Once the user gives the go, the bundle is the source of truth — proceed to task dispatch (workflow step 5 above).
 
 ## Direct dispatch (skip-architect path)
 
@@ -123,17 +134,17 @@ For tickets the user has explicitly opted to skip planning on:
 
 2. **Confirm the contract with the user** before dispatch.
 
-3. **Dispatch** to the matching engineering specialist. Pass the contract inline (no bundle path, since there is no bundle), plus the `ASSIGNED_REPO` member.
+3. **Dispatch the contract's `ASSIGNED_AGENT`.** Pass the contract inline (no bundle path, since there is no bundle), plus the `ASSIGNED_REPO` member.
 
-4. **Run the per-task gate** exactly as in workflow step 5's per-task sub-steps: open a run manifest (skip-path location), capture the member baseline, read the report, **independently verify the gates**, dispatch `chuck-code-reviewer` for the one task, handle the verdict, and run the user verification gate. Then integrate (step 8).
+4. **Run the per-task gate** exactly as in workflow step 5's per-task mechanics: open a run manifest (skip-path location), capture the member baseline, read the report, **independently verify the gates**, dispatch `chuck-code-reviewer` for the one task, handle the verdict, and run the user verification gate. (This is a single-task run, so the execution-mode question does not apply — you verify the one task with the user.) Then integrate (step 8).
 
-This path exists for speed on clearly trivial cross-domain or single-domain work. It does NOT support multi-task dispatch — for anything with more than one task, use the architect path.
+This path exists for speed on clearly trivial work. It does NOT support multi-task dispatch — for anything with more than one task, use the architect path.
 
 ## Hard gates
 
 Reject a specialist's report if:
-- Any project-defined check (convention, lint, tests) is `fail` **as observed by the orchestrator's own independent gate run** (step 5 sub-step 3) — the engineer's self-reported `pass` does not satisfy the gate on its own; a self-report that disagrees with the observed result is itself grounds to reject
-- Files were edited outside the specialist's scope (domain or task `touch` paths)
+- Any project-defined check (convention, lint, tests) is `fail` **as observed by the orchestrator's own independent gate run** (step 5 sub-step 3) — the assigned agent's self-reported `pass` does not satisfy the gate on its own; a self-report that disagrees with the observed result is itself grounds to reject
+- Files were edited outside the task's scope (domain or task `touch` paths)
 - Required report sections are missing
 
 Reject a plan-bundle review if:
@@ -154,7 +165,7 @@ Work is checkpointed **on disk**, so a run can stop mid-execution (context limit
 
 - **The run manifest is the primary checkpoint.** If a `run.json` exists for the run, run `node lib/manifest.mjs show <run.json>`: it prints each task's `status`/`verdict`/`user_verified`, the per-member baselines, and an explicit `RESUME AT: <first not-done task>` pointer. Resume there; do **not** re-dispatch tasks already `done`. The manifest replaces guessing — only fall back to scanning the reports tree if no manifest exists (older runs).
 - **Setup interrupted** → a leftover `workspace.*.draft` (plus any partial `overrides.local.json`) is the checkpoint. `/orchestrate-config init` resumes from it (see that command).
-- **Planning interrupted** (no manifest yet — it is created at the start of engineering dispatch) → if a bundle exists but has no plan-review next to it, resume at plan review; if it has an approved review but no manifest, resume at engineering dispatch (which opens the manifest).
+- **Planning interrupted** (no manifest yet — it is created at the start of task dispatch) → if a bundle exists but has no plan-review next to it, resume at plan review; if it has an approved review but no manifest, resume at task dispatch (which opens the manifest).
 - **Validate against reality.** The manifest is the source of truth for *intent*, but verify the working tree matches: a task marked `done` whose diff has vanished, or a `baseline` that no longer exists, is a conflict to **surface to the user**, not to silently re-run.
 - **Always re-confirm the resume point with the user** before continuing — show what the manifest says is done and where you'll pick up.
 
@@ -166,4 +177,4 @@ Work is checkpointed **on disk**, so a run can stop mid-execution (context limit
 - **Reviewer keeps returning `revise`:** after two rounds, escalate to the user.
 - **Specialist pushes back on a task:** treat as signal. Either revise the task with the user's input, or escalate to architect for replanning.
 - **Code review fails (`revise`):** identify which task(s) the critical findings are tied to, build a fix contract from the findings, re-dispatch the relevant engineer. Cap at two fix-rounds per task before escalating to user.
-- **Code review rejects:** implementation needs rework that patches won't fix. Often signals a problem in the plan that wasn't caught in plan-review. Re-engage architect or surface to user — don't loop directly back to the engineer.
+- **Code review rejects:** implementation needs rework that patches won't fix. Often signals a problem in the plan that wasn't caught in plan-review. Re-engage architect or surface to user — don't loop directly back to the assigned agent.

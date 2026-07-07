@@ -21,12 +21,11 @@ import { profilePaths } from "./paths.mjs";
 function readJSON(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } }
 function fileExists(p) { try { fs.accessSync(p); return true; } catch { return false; } }
 
-// Members that count toward the "n members" wording. Monorepo placeholder
-// subProjects ("<workspaces-field>", …) yield 0 → the caller drops the count
-// from the wording (cosmetic).
+// Members that count toward the "n members" wording. detect.mjs now enumerates
+// real monorepo sub-project paths, so this is a straight count.
 function memberCount(topo) {
   if (topo.topology === "multi-repo") return (topo.childRepos || []).length;
-  if (topo.topology === "monorepo") return (topo.subProjects || []).filter((p) => !String(p).startsWith("<")).length;
+  if (topo.topology === "monorepo") return (topo.subProjects || []).length;
   return 1;
 }
 
@@ -42,13 +41,23 @@ export function readinessState(cwd) {
   const root = topo.root || start;
   const { profile, draft } = profilePaths(root, topo.topology);
 
-  const prof = readJSON(profile);
-  if (prof && validateWorkspace({ ...prof, decisions_needed: undefined }).valid) {
-    return { applicable: true, needsSetup: false, root, profile };
-  }
-
   const n = memberCount(topo);
   const scope = `${topo.topology}${n ? ` with ${n} member${n === 1 ? "" : "s"}` : ""}`;
+
+  const prof = readJSON(profile);
+  if (prof) {
+    // A profile FILE exists → the workspace IS set up. Distinguish valid from stale:
+    if (validateWorkspace({ ...prof, decisions_needed: undefined }).valid) {
+      return { applicable: true, needsSetup: false, root, profile };
+    }
+    // Present but invalid — almost always an older-plugin schema (e.g. workspace@2
+    // after the @3 bump), sometimes a hand-broken file. This needs RE-DERIVING
+    // (/orchestrate-config update, which rebuilds from the durable overrides), NOT a
+    // fresh init. Reporting it as "no setup" is the bug this flag fixes.
+    return { applicable: true, needsSetup: true, stale: true, scope, root, profile };
+  }
+
+  // No profile file at all → fresh setup (interrupted if a detached draft is present).
   return { applicable: true, needsSetup: true, interrupted: fileExists(draft), scope, root };
 }
 

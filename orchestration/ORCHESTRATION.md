@@ -66,8 +66,8 @@ Specialists are generic. They learn each project's specifics at runtime by readi
    - **Confirm execution order with the user once.** The architect's plan provides the order; the user can adjust.
    - **Per-task mechanics — identical in both modes.** For each task (skip any the manifest already marks `done`):
      1. **Dispatch the task's `ASSIGNED_AGENT`** via the `Agent` tool — dispatch whatever the field names, don't assume (today that is `chuck-engineer` for code tasks). For task-file dispatch, pass the task file path AND the bundle path. For inline dispatch, pass the contract directly. Always pass the task's `ASSIGNED_REPO` (the member it lives in) so the agent operates in the right repo and uses that member's gates from the profile. Mark the task `in_progress` in the manifest.
-     2. **Read the assigned agent's report** (in the assigned member's `reports_dir`, `.../<assigned-agent>/<ISO-timestamp>.md`). Record its path in the manifest.
-     3. **Independently verify the gates.** Do NOT trust the engineer's self-reported `CHECKS`. Run `node lib/gates.mjs <workspace.json> <ASSIGNED_REPO>` — it executes that member's recorded gate commands in the member's path and emits observed `pass|fail|n/a` per gate (it auto-uses a non-mutating variant: `--fix` dropped, `--write`→`--check`; pass `--mutate` if you deliberately want the mutating form, whose edits then join this task's diff). Pipe the `observed` block into `lib/manifest.mjs gates <run.json> <task-id> '<json>'`. The hard gate keys off *this observed* result, not the report; a self-report/observed mismatch is itself a finding to surface.
+     2. **Read the assigned agent's report** (in the assigned member's `reports_dir`, `.../<assigned-agent>/<ISO-timestamp>.md`). Record its path in the manifest. **When the agent returns, do NOT commit or offer to commit — the only next step is the independent gate check (sub-step 3), then code review (sub-step 4). A finished task is not a finished run.**
+     3. **Independently verify the gates.** Do NOT trust the engineer's self-reported `CHECKS`. Run `node lib/gates.mjs <workspace.json> <ASSIGNED_REPO>` — it executes that member's recorded gate commands in the member's path and emits observed `pass|fail|n/a` per gate (it auto-uses a non-mutating variant for common formatters (eslint `--fix` dropped; prettier/black/`ruff format`/`cargo fmt`/rustfmt → `--check`) — best-effort, so an unrecognized in-place formatter could still touch files; pass `--mutate` if you deliberately want the mutating form, whose edits then join this task's diff). Pipe the `observed` block into `lib/manifest.mjs gates <run.json> <task-id> '<json>'`. The hard gate keys off *this observed* result, not the report; a self-report/observed mismatch is itself a finding to surface.
      4. **Dispatch `chuck-code-reviewer` for this task.** Pass the task file path, the engineer's report path, the task's `ASSIGNED_REPO`, the manifest's observed gate results, and the diff scope — scoped to that member with the manifest's baseline (`git -C <member-path> diff <task-baseline>..HEAD` covering only this task's files). Reviewer runs `code-review-rubric` once and writes a review to the member's `reports_dir/chuck-code-reviewer/<ISO-timestamp>.md` with `VERDICT: approve | revise | reject`. Record the review path + verdict in the manifest.
      5. **Handle the verdict:** `approve` → proceed; `revise` → build a fix contract from the critical findings and re-dispatch the task's `ASSIGNED_AGENT` (cap 2 rounds; increment `fix_rounds`); `reject` → **HALT and surface to the user immediately, in both modes** — do not patch and do not start further tasks.
    - **The mode changes only the USER verification cadence:**
@@ -76,11 +76,13 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 6. **(Reserved.)** Per-specialist report handling is now part of step 5.
 
-7. **Optional integration review.** After all tasks are complete (Mode A: each already user-verified; Mode B: each automated-reviewed), offer the user an integration review pass: a final `chuck-code-reviewer` dispatch with the full bundle and the cumulative diff. In **Mode B** this is folded into the single final user verification. Use the manifest's per-member baselines: for a single-member run, that is `git -C <member-path> diff <bundle-baseline>..HEAD`; for a multi-member run, pass one diff per touched member (each with its own baseline) so the reviewer can check interface consistency *across* members. Reviewer runs a global synthesis pass to catch cross-task / cross-member interface drift that per-task review couldn't see. Record the integration-review path in the manifest. Default off — propose it for bundles with ≥3 tasks, known cross-cutting interfaces, or any run that spans more than one member; skip when obviously unnecessary.
+7. **Optional integration review.** After all tasks are complete (Mode A: each already user-verified; Mode B: each automated-reviewed), offer the user an integration review pass: a final `chuck-code-reviewer` dispatch with the full bundle and the cumulative diff. In **Mode B** this is folded into the single final user verification. Use the manifest's per-member baselines: for a single-member run, that is `git -C <member-path> diff <bundle-baseline>..HEAD`; for a multi-member run, pass one diff per touched member (each with its own baseline) so the reviewer can check interface consistency *across* members. Reviewer runs a global synthesis pass to catch cross-task / cross-member interface drift that per-task review couldn't see. Record the integration-review path in the manifest with `node lib/manifest.mjs set-run <run.json> integration_review=<path>`. Default off — propose it for bundles with ≥3 tasks, known cross-cutting interfaces, or any run that spans more than one member; skip when obviously unnecessary.
 
 8. **Integrate.** Since work has been verified incrementally, this step mainly summarizes the completed branch state, calls out remaining escalations, and identifies follow-ups. Mark the manifest `STATUS: complete`.
 
 9. **Do not edit feature code.** As orchestrator, do not edit files in domain directories yourself. Docs, plans, manifests, and `.claude/` edits are fine.
+
+10. **Do not commit, and do not suggest committing.** Committing is NOT part of orchestration. Never run `git add`/`commit`/`push`, and never offer to — not after an agent returns, not per task, not at integration. The workflow leaves changes in the working tree; committing is the user's explicit decision, made on their own initiative after they're satisfied. (This also mirrors the global rule: commit only when the user asks.)
 
 ## Run manifest
 
@@ -94,16 +96,18 @@ validated by `lib/schema.mjs`). **Do not hand-write or hand-edit it** — use
 schema-valid and resumable:
 
 ```
-node lib/manifest.mjs init  <run.json> <spec.json>            # creates it; captures per-member git baselines
-node lib/manifest.mjs set   <run.json> <task-id> status=done verdict=approve user_verified=true
-node lib/manifest.mjs gates <run.json> <task-id> '{"convention":"pass","lint":"pass","test":"pass","build":"pass"}'
-node lib/manifest.mjs status <run.json> complete
-node lib/manifest.mjs show  <run.json>                        # summary + "RESUME AT: <first not-done task>"
+node lib/manifest.mjs init    <run.json> <spec.json>          # creates it; captures per-member git baselines
+node lib/manifest.mjs set     <run.json> <task-id> status=done verdict=approve user_verified=true
+node lib/manifest.mjs set-run <run.json> integration_review=<path>   # run-level fields
+node lib/manifest.mjs gates   <run.json> <task-id> '{"convention":"pass","lint":"pass","test":"pass","build":"pass"}'
+node lib/manifest.mjs status  <run.json> complete
+node lib/manifest.mjs show    <run.json>                      # summary + "RESUME AT: <first not-done task>"
 ```
 
-`init` takes a spec `{ ticket, topology, bundle, workspace_root, active_members:[{id,path}],
-execution_order:[…], tasks:[{id,repo}] }` and fills the rest (baselines via git, all
-tasks `not_started`). The shape it maintains: top-level `run/ticket/topology/bundle/
+`init` takes a spec `{ ticket, topology, workspace_root, active_members:[{id,path}],
+execution_order:[…], tasks:[{id,repo}], bundle? }` and fills the rest (baselines via git,
+all tasks `not_started`). `bundle` is optional — omit it on the skip-architect path and it
+defaults to `"inline"`. The shape it maintains: top-level `run/ticket/topology/bundle/
 status/updated`, `active_members[].baseline`, `execution_order`, `tasks[]` (each with
 `status`, `engineer_report`, `review`, `verdict`, `gates_observed` = the ORCHESTRATOR's
 observed result not the assigned agent's claim, `user_verified`, `fix_rounds`), and

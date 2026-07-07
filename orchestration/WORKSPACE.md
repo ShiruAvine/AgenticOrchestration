@@ -268,6 +268,7 @@ not parse it programmatically.
 ```jsonc
 {
   "schema": "orchestration/workspace@3",
+  "plugin_version": "<plugin semver that generated this profile>",  // stamped by detect.mjs; drives upgrade severity
   "generated": "<ISO-8601>",
   "topology": "single-repo | monorepo | multi-repo",
   "workspace_root": "<absolute path>",
@@ -337,3 +338,16 @@ added). On each `/orchestrate`, if the member set or branches visibly drifted fr
 the profile, note it and offer to re-run `/orchestrate-config update`. Treat a recalled
 profile as "true when written" — re-verify a gate command before relying on it if
 anything looks stale.
+
+Two version signals sit above per-run drift, both resolved by `/orchestrate-config update`
+(which re-derives from the durable overrides):
+
+- **Schema validity (hard).** If the on-disk profile fails the validator (e.g. an older
+  `workspace@N`), the readiness check marks the workspace **stale** and routes to `update`
+  — it is a configured workspace that must be re-derived, not an unconfigured one.
+- **`plugin_version` gap (soft).** Every profile records the plugin version that
+  produced it. `lib/version.mjs` grades the gap to the installed plugin as
+  `current` / `patch` (optional) / `minor` (refresh recommended) / `major` (reconfigure —
+  review carefully) / `ahead` (plugin older than the profile) / `unknown` (predates
+  tracking). `show` reports this; use the severity to decide how strongly to suggest an
+  `update`.

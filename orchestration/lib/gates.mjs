@@ -9,9 +9,11 @@
 //   node gates.mjs <workspace.json> <member-id> [--mutate] [--only test,build]
 //
 // By default, known *mutating* gate forms are converted to a read-only variant
-// (eslint `--fix` dropped; prettier `--write` → `--check`) so verification does
-// not change the tree. Pass --mutate to run commands verbatim (their edits then
-// become part of the task diff, per the workflow).
+// (eslint `--fix` dropped; prettier `--write`, black, `ruff format`, `cargo fmt`,
+// rustfmt → their `--check` forms) so verification does not change the tree. This is
+// a best-effort heuristic (see readonlyVariant) — unrecognized in-place formatters
+// run verbatim. Pass --mutate to run commands verbatim (their edits then become part
+// of the task diff, per the workflow).
 //
 // Output (stdout): JSON
 //   { "member": "<id>", "results": {
@@ -32,7 +34,8 @@ const memberId = args[1];
 if (!memberId) die("usage: gates.mjs <workspace.json> <member-id> [--mutate] [--only k1,k2]");
 const mutate = args.includes("--mutate");
 const onlyIdx = args.indexOf("--only");
-const only = onlyIdx >= 0 ? args[onlyIdx + 1].split(",") : null;
+if (onlyIdx >= 0 && !args[onlyIdx + 1]) die("--only requires a comma-separated list of gate keys");
+const only = onlyIdx >= 0 ? args[onlyIdx + 1].split(",").map((s) => s.trim()).filter(Boolean) : null;
 
 let ws;
 try { ws = JSON.parse(fs.readFileSync(wsPath, "utf8")); } catch (e) { die(`cannot read ${wsPath}: ${e.message}`); }
@@ -45,10 +48,22 @@ if (!member) die(`no member "${memberId}" (have: ${ws.members.map((m) => m.id).j
 const cwd = path.resolve(ws.workspace_root, member.path === "." ? "" : member.path);
 if (!fs.existsSync(cwd)) die(`member path does not exist: ${cwd}`);
 
-// Best-effort read-only transform for the two common mutating forms.
+// Best-effort read-only transform for common mutating formatter/linter forms, so a
+// default gate run doesn't rewrite the working tree. Each rule only fires when the
+// mutating flag is present and the check flag isn't already there.
+//
+// LIMITATION: this is a heuristic on the command string, not a guarantee. Only the
+// forms below are neutralized; any other in-place formatter (e.g. `gofmt -w`, a custom
+// script) runs verbatim and could modify files. For those, record a check-style gate
+// command in the profile, or pass --mutate deliberately (edits then join the diff).
 function readonlyVariant(cmd) {
-  let out = cmd.replace(/\s--fix\b/g, "");
-  out = out.replace(/--write\b/g, "--check");
+  let out = cmd;
+  out = out.replace(/\s--fix\b/g, "");                                   // eslint --fix
+  out = out.replace(/--write\b/g, "--check");                            // prettier --write
+  if (/\bblack\b/.test(out) && !/(--check|--diff)\b/.test(out)) out = out.replace(/\bblack\b/, "black --check");
+  if (/\bruff\s+format\b/.test(out) && !/--check\b/.test(out)) out = out.replace(/\bruff\s+format\b/, "ruff format --check");
+  if (/\bcargo\s+fmt\b/.test(out) && !/--check\b/.test(out)) out = out.replace(/\bcargo\s+fmt\b/, "cargo fmt --check");
+  if (/\brustfmt\b/.test(out) && !/--check\b/.test(out)) out = out.replace(/\brustfmt\b/, "rustfmt --check");
   return out;
 }
 

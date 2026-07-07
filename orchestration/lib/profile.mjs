@@ -86,6 +86,7 @@ function cmdRender(file, out) {
   L.push("<!-- Generated from workspace.json by lib/profile.mjs. Do NOT hand-edit:");
   L.push("     edit workspace.json (the source of truth) and re-render. -->");
   L.push(`GENERATED: ${ws.generated}`);
+  L.push(`PLUGIN_VERSION: ${ws.plugin_version ?? "— (predates version tracking)"}`);
   L.push(`TOPOLOGY: ${ws.topology}`);
   L.push(`WORKSPACE_ROOT: ${ws.workspace_root}`);
   L.push("");

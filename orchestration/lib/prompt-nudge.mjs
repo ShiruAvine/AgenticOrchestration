@@ -70,31 +70,43 @@ function main() {
 
   const configMjs = path.join(path.dirname(fileURLToPath(import.meta.url)), "config.mjs");
   const disableCmd = `node "${configMjs}" set workspace readiness_check false "${st.root}"`;
-  const shortWhat = st.interrupted
-    ? `orchestration setup looks interrupted here`
-    : `this workspace isn't configured for orchestration (${st.scope})`;
-  const longWhat = st.interrupted
-    ? `Orchestration setup for this workspace looks INTERRUPTED (a draft exists but no finalized profile) at ${st.root}.`
-    : `This workspace is NOT configured for orchestration yet (detected ${st.scope}) at ${st.root}.`;
+
+  // Stale = a profile exists but is from an older plugin version → the fix is a
+  // REFRESH (/orchestrate-config update, re-derives from durable overrides), not a
+  // fresh init. Fresh/interrupted → init.
+  const primaryLabel = st.stale ? "Update now" : "Configure now";
+  const primaryAction = st.stale
+    ? `refresh this workspace via the /orchestrate-config update skill — it re-derives the profile from your `
+      + `existing durable overrides, migrating a profile made by an older plugin version.`
+    : `set up this workspace via the /orchestrate-config init skill (dispatch the settings-manager, resolve `
+      + `every decision it surfaces, finalize and report the profile).`;
+  const shortWhat = st.stale
+    ? `this workspace's orchestration profile is from an older version and needs a refresh`
+    : st.interrupted
+      ? `orchestration setup looks interrupted here`
+      : `this workspace isn't configured for orchestration (${st.scope})`;
+  const longWhat = st.stale
+    ? `This workspace HAS an orchestration profile but it fails validation (older plugin schema/version) at ${st.root} — it needs re-deriving, not fresh setup.`
+    : st.interrupted
+      ? `Orchestration setup for this workspace looks INTERRUPTED (a draft exists but no finalized profile) at ${st.root}.`
+      : `This workspace is NOT configured for orchestration yet (detected ${st.scope}) at ${st.root}.`;
 
   const directive =
-    `[orchestration onboarding — fires once per session while this workspace is unconfigured]\n`
+    `[orchestration onboarding — fires once per session while this workspace needs attention]\n`
     + `${longWhat}\n`
     + `BEFORE doing anything with the user's request, ask them how to proceed using your interactive `
     + `question tool (AskUserQuestion) — a single question with exactly these options. Briefly make clear `
-    + `this is a one-time orchestration-plugin setup prompt, separate from their request, so they know why `
+    + `this is a one-time orchestration-plugin prompt, separate from their request, so they know why `
     + `they're being asked:\n`
-    + `  • "Configure now" — set up this workspace via the /orchestrate-config init skill. DEFER the user's `
-    + `original request: do NOT start working on it. Run the ENTIRE setup flow to completion first `
-    + `(dispatch the settings-manager, resolve every decision it surfaces, finalize and report the `
-    + `profile). ONLY once setup is fully finished, tell the user it's done and THEN return to their `
-    + `original request — restate it briefly so the context is clear before you act on it.\n`
-    + `  • "Skip this session" — do nothing about setup; you won't be asked again this session. Proceed `
+    + `  • "${primaryLabel}" — ${primaryAction} DEFER the user's original request: do NOT start working on `
+    + `it. Run the ENTIRE flow to completion first. ONLY once it's finished, tell the user it's done and `
+    + `THEN return to their original request — restate it briefly so the context is clear before you act.\n`
+    + `  • "Skip this session" — do nothing about this; you won't be asked again this session. Proceed `
     + `directly with the user's original request.\n`
     + `  • "Disable here" — run exactly this command, confirm it's off, then proceed with the user's `
     + `original request:\n`
     + `      ${disableCmd}\n`
-    + `Do not run any setup or the disable command until the user has chosen. Never interleave setup with `
+    + `Do not run any setup or the disable command until the user has chosen. Never interleave it with `
     + `the original request — finish the chosen branch first. If the user ignores the question and simply `
     + `restates their request, honor the request and don't re-ask.`;
 

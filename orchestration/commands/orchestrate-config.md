@@ -68,9 +68,17 @@ the config is personal/gitignored, so there is nothing canonical to reset to).
 
 ## `update` — re-detect an existing workspace
 
+`update` also **migrates a profile from an older plugin version.** Because the profile is
+*derived* (detected ⊕ the durable `overrides.local.json`), re-deriving always produces a
+current-schema profile — so a workspace whose on-disk profile fails validation (e.g. an
+older `workspace@2` file) is *refreshed*, not treated as unconfigured. The readiness hook
+routes such a "stale" workspace here (to `update`) rather than to `init`.
+
 1. **Dispatch `orchestration-settings-manager`** (MODE: update). It re-detects, applies
    the existing overrides, and returns the derived-profile path, a **DRIFT** summary,
-   any **CONFLICTS** (stale overrides), and any new `DECISIONS NEEDED`.
+   any **CONFLICTS** (stale overrides), and any new `DECISIONS NEEDED`. If the current
+   on-disk profile is unreadable or from an older schema, treat it as "no prior profile to
+   diff" (report everything as migrated) rather than failing.
 2. **Surface the drift** to the user (new/removed members, changed gates/branches,
    knowledge links gained/lost). Ask any new decisions via `AskUserQuestion`.
 3. **Resolve conflicts** — for each stale override, ask whether to drop it
@@ -117,6 +125,10 @@ Render, don't hand-summarize:
 - `node ${CLAUDE_PLUGIN_ROOT}/lib/profile.mjs render <profile>` — the workspace profile.
 - `node ${CLAUDE_PLUGIN_ROOT}/lib/config.mjs show <root>` — effective settings + sources.
 - `node ${CLAUDE_PLUGIN_ROOT}/lib/overrides.mjs show <overrides>` — the durable overrides.
+- `node ${CLAUDE_PLUGIN_ROOT}/lib/version.mjs check <profile>` — the plugin version that
+  generated the profile vs the installed plugin, and the upgrade **severity**
+  (`current` / `patch` / `minor` / `major` / `ahead` / `unknown`). Surface the severity's
+  recommended action when it isn't `current` (e.g. minor/major → suggest `update`).
 
 If there is no profile, say so and offer `init`.
 

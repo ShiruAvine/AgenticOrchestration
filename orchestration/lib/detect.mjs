@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKSPACE_SCHEMA, validateWorkspace } from "./schema.mjs";
+import { pluginVersion } from "./version.mjs";
 
 const IGNORE_DIRS = new Set(["node_modules", "vendor", "dist", "build", ".git"]);
 const DEFAULT_BRANCHES = new Set(["main", "master"]);
@@ -57,8 +58,12 @@ function detectTopology(root) {
   const inside = git(root, ["rev-parse", "--is-inside-work-tree"]) === "true";
   if (inside) {
     const top = git(root, ["rev-parse", "--show-toplevel"]) || root;
-    const subProjects = findSubProjects(top);
-    return { topology: subProjects.length > 1 ? "monorepo" : "single-repo", root: top, subProjects };
+    const subProjects = subProjectDirs(top);
+    // Monorepo when there are ≥2 real sub-projects, OR a workspace config declares one
+    // and at least one sub-project exists. subProjects are real member paths (fixes the
+    // old placeholder path that yielded zero members for declared-workspace monorepos).
+    const isMono = subProjects.length > 1 || (hasWorkspaceConfig(top) && subProjects.length >= 1);
+    return { topology: isMono ? "monorepo" : "single-repo", root: top, subProjects };
   }
   // not a repo → scan immediate children for independent repos
   const childRepos = listDirs(root).filter((d) => exists(path.join(root, d, ".git")));
@@ -66,26 +71,32 @@ function detectTopology(root) {
   return { topology: null, root, childRepos: [] };
 }
 
-// Distinct sub-project markers under a single repo (for mono vs single).
-function findSubProjects(top) {
-  const rootPkg = readJSON(path.join(top, "package.json"));
-  if (rootPkg && rootPkg.workspaces) return ["<workspaces-field>", "<workspaces-field-2>"]; // >1 → monorepo
-  for (const f of ["pnpm-workspace.yaml", "nx.json", "turbo.json", "lerna.json"]) {
-    if (exists(path.join(top, f))) return ["<" + f + ">", "<" + f + "-2>"];
-  }
-  // else: count distinct subdirs (depth ≤ 2) holding a manifest, excluding root
+// Real sub-project directories under a repo: subdirs (depth ≤ 2) that hold a
+// manifest. Paths are relative to the repo root and POSIX-normalized so profiles
+// are stable across platforms. Returns actual member paths — never placeholders.
+function subProjectDirs(top) {
   const manifests = ["package.json", "pyproject.toml", "go.mod"];
   const found = new Set();
   const walk = (dir, depth) => {
     if (depth > 2) return;
     for (const name of listDirs(dir)) {
       const sub = path.join(dir, name);
-      if (manifests.some((m) => exists(path.join(sub, m)))) found.add(path.relative(top, sub));
+      if (manifests.some((m) => exists(path.join(sub, m)))) found.add(posix(path.relative(top, sub)));
       walk(sub, depth + 1);
     }
   };
   walk(top, 1);
-  return [...found];
+  return [...found].sort();
+}
+
+// Does the repo DECLARE a workspace/monorepo (npm/yarn `workspaces`, pnpm, nx, turbo,
+// lerna)? Used only as a topology signal — the member list always comes from the real
+// directory walk above, so a declared monorepo enumerates its actual packages.
+function hasWorkspaceConfig(top) {
+  const rootPkg = readJSON(path.join(top, "package.json"));
+  if (rootPkg && rootPkg.workspaces) return true;
+  return ["pnpm-workspace.yaml", "nx.json", "turbo.json", "lerna.json"]
+    .some((f) => exists(path.join(top, f)));
 }
 
 // --- per-member profiling ---------------------------------------------------
@@ -259,7 +270,7 @@ function detect(rootArg) {
   let relPaths;
   if (topo.topology === "single-repo") relPaths = ["."];
   else if (topo.topology === "multi-repo") relPaths = topo.childRepos.sort();
-  else relPaths = topo.subProjects.filter((p) => !p.startsWith("<")).sort(); // monorepo
+  else relPaths = [...topo.subProjects].sort(); // monorepo — real member paths
 
   const members = [];
   const decisions = [];
@@ -271,6 +282,7 @@ function detect(rootArg) {
 
   return {
     schema: WORKSPACE_SCHEMA,
+    plugin_version: pluginVersion(),
     generated: new Date().toISOString(),
     topology: topo.topology,
     workspace_root: topo.root,

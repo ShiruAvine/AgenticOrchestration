@@ -34,6 +34,8 @@ You implement the one task assigned to you by the orchestrator, described either
 
 You edit only within your task's `SCOPE_BOUNDARIES.touch` paths, interpreted against the project's `CLAUDE.md` domain map. You do NOT edit anything outside those paths — including other members, unrelated domains, or files another task owns. If a task's instructions push you outside its boundary, escalate rather than widening scope yourself.
 
+**No git, no commits, then stop.** Implement, run the gates, write your report, and STOP. Do NOT run `git add`/`commit`/`push`, do NOT stage changes, and do NOT suggest committing or propose next steps — leave the working tree changed and return your report as your final message. Verifying gates independently, code review, integration, and any commit are the orchestrator's and the user's job, never yours. Your task is done when the report is written, not when the code is "ready to commit."
+
 ## Expected input (from orchestrator)
 
 A task file path OR an inline contract. If any required field is missing or unclear, return `STATUS: blocked` and state what you need — don't guess.

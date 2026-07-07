@@ -7,12 +7,14 @@
 //
 // Verbs:
 //   init <run.json> <spec.json>
-//       spec: { ticket, topology, bundle, workspace_root,
+//       spec: { ticket, topology, workspace_root,
+//               bundle,                                 // optional; defaults to "inline" (skip-architect path)
 //               active_members: [{id, path}],          // baselines captured here via git
 //               execution_order: ["task-01-…", …],
 //               tasks: [{id, repo}] }                   // all created as not_started
 //   set <run.json> <task-id> <key=value> [<key=value> …]
 //       keys: status, verdict, engineer_report, review, user_verified, fix_rounds
+//   set-run <run.json> <key=value> [<key=value> …]     // run-level fields: integration_review
 //   gates <run.json> <task-id> <gates-json>            // {"test":"pass","build":"fail",…}
 //   status <run.json> <run-status>                     // planning|executing|complete|blocked
 //   show <run.json>                                    // summary + RESUME-AT pointer
@@ -40,9 +42,11 @@ function gitHead(cwd) {
 
 function cmdInit(runPath, specPath) {
   const s = readJSON(specPath);
-  for (const k of ["ticket", "topology", "bundle", "active_members", "execution_order", "tasks"]) {
+  for (const k of ["ticket", "topology", "active_members", "execution_order", "tasks"]) {
     if (s[k] === undefined) die(`spec missing "${k}"`);
   }
+  // bundle is optional — the skip-architect path has no bundle, so default to "inline".
+  const bundle = typeof s.bundle === "string" ? s.bundle : "inline";
   const root = s.workspace_root || process.cwd();
   const active_members = s.active_members.map((m) => {
     const abs = path.resolve(root, m.path === "." ? "" : m.path);
@@ -58,7 +62,7 @@ function cmdInit(runPath, specPath) {
   }));
   const run = {
     schema: RUN_SCHEMA, run: nowISO(), ticket: s.ticket, topology: s.topology,
-    bundle: s.bundle, status: "executing", updated: nowISO(),
+    bundle, status: "executing", updated: nowISO(),
     active_members, execution_order: s.execution_order, tasks, integration_review: null,
   };
   save(runPath, run);
@@ -102,6 +106,22 @@ function cmdSet(runPath, taskId, pairs) {
   run.updated = nowISO();
   save(runPath, run);
   process.stdout.write(`updated ${taskId}: ${pairs.join(" ")}\n`);
+}
+
+// Set run-level (not per-task) fields. Currently: integration_review (path|null).
+function cmdSetRun(runPath, pairs) {
+  const run = readJSON(runPath);
+  const ALLOWED = new Set(["integration_review"]);
+  for (const pair of pairs) {
+    const i = pair.indexOf("=");
+    if (i < 0) die(`bad assignment "${pair}" (expected key=value)`);
+    const key = pair.slice(0, i);
+    if (!ALLOWED.has(key)) die(`unknown run field "${key}" (settable: ${[...ALLOWED].join(", ")})`);
+    run[key] = coerce(key, pair.slice(i + 1)); // "null" → null, else the raw string (a path)
+  }
+  run.updated = nowISO();
+  save(runPath, run);
+  process.stdout.write(`updated run: ${pairs.join(" ")}\n`);
 }
 
 function cmdGates(runPath, taskId, gatesJson) {
@@ -162,6 +182,7 @@ const [verb, ...a] = process.argv.slice(2);
 switch (verb) {
   case "init": if (!a[1]) die("usage: manifest.mjs init <run.json> <spec.json>"); cmdInit(a[0], a[1]); break;
   case "set": if (!a[2]) die("usage: manifest.mjs set <run.json> <task-id> <key=value> …"); cmdSet(a[0], a[1], a.slice(2)); break;
+  case "set-run": if (!a[1]) die("usage: manifest.mjs set-run <run.json> <key=value> …"); cmdSetRun(a[0], a.slice(1)); break;
   case "gates": if (!a[2]) die("usage: manifest.mjs gates <run.json> <task-id> <gates-json>"); cmdGates(a[0], a[1], a[2]); break;
   case "status": if (!a[1]) die("usage: manifest.mjs status <run.json> <run-status>"); cmdStatus(a[0], a[1]); break;
   case "show": if (!a[0]) die("usage: manifest.mjs show <run.json>"); cmdShow(a[0]); break;

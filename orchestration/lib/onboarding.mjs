@@ -45,6 +45,15 @@ function main() {
   if (st.needsSetup) {
     // Setting: the onboarding nudge (fail-open to ON on trouble).
     if (!readinessCheckEnabled(cwd)) return;
+    if (st.stale) {
+      emit(
+        `⚙️  Orchestration: this workspace's profile is from an older plugin version — refresh it with \`/orchestrate-config update\`.`,
+        `The orchestration profile at ${st.profile} exists but fails validation (older schema/version). The `
+        + `workspace IS set up — it just needs re-deriving, NOT a fresh init. On the user's next prompt they will `
+        + `be asked how to proceed; the fix is \`/orchestrate-config update\` (re-derives from the existing durable `
+        + `overrides). Do not run it automatically.`);
+      return;
+    }
     if (st.interrupted) {
       emit(
         `⚙️  Orchestration: setup for this workspace looks interrupted — you'll be asked how to proceed (or run \`/orchestrate-config init\`).`,

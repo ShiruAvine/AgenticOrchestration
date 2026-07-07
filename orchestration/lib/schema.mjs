@@ -71,6 +71,12 @@ export function validateWorkspace(obj) {
     errs.push(`schema: expected "${WORKSPACE_SCHEMA}", got ${JSON.stringify(obj.schema)}`);
   }
   checkType(errs, "generated", obj.generated, isString, "ISO string");
+  // Optional: the plugin version that produced this profile (stamped by detect.mjs).
+  // Optional so profiles written before version tracking stay valid; new/re-derived
+  // profiles always carry it. See lib/version.mjs.
+  if (obj.plugin_version !== undefined) {
+    checkType(errs, "plugin_version", obj.plugin_version, isStringOrNull, "string|null");
+  }
   checkEnum(errs, "topology", obj.topology, TOPOLOGIES);
   checkType(errs, "workspace_root", obj.workspace_root, isString, "absolute path string");
 

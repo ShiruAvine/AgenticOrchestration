@@ -26,9 +26,10 @@ The task file MUST contain each of the following non-empty fields:
 - `GOAL`
 - `WHY`
 - `INTERFACE` (endpoints / dtos / events; per-field "n/a" allowed)
-- `UX` (REQUIRED only if assigned to a frontend agent AND task involves user-facing change; otherwise must be omitted entirely)
+- `UX` (REQUIRED only if the task involves a user-facing change; otherwise must be omitted entirely)
 - `SCOPE_BOUNDARIES` (touch + do-not-touch lists)
 - `FILES_AFFECTED`
+- `TESTS` (tests to add/update, or a justified `none`)
 - `DONE_WHEN`
 - `ESCALATE_BACK_IF`
 
@@ -66,9 +67,9 @@ Read the project's `CLAUDE.md` for domain-specific conventions (frameworks, patt
 
 Convention violation → **major** (escalate to **critical** if it breaks an invariant or contract).
 
-### 5. UX completeness (frontend tasks with user-facing change only)
+### 5. UX completeness (tasks with a user-facing change only)
 
-If `ASSIGNED_AGENT` is a frontend agent AND the task touches user-facing code, `UX` must include:
+If the task touches user-facing code, `UX` must include:
 - A step-by-step user flow
 - A mockup or layout note for any new/changed screen
 - Edge states: empty, loading, error
@@ -78,11 +79,12 @@ Missing `UX` section on a user-facing task → **critical**.
 Missing edge states → **major**.
 Any "TBD" or "decide later" placeholder in UX → **critical**.
 
-### 6. Testability
+### 6. Tests and testability
 
-`DONE_WHEN` must contain:
-- Measurable acceptance criteria (not "feature works")
-- A reference to the project's convention check / lint / tests where applicable
+`DONE_WHEN` must contain measurable acceptance criteria (not "feature works"). Then check the `TESTS` section:
+- A behavior-changing task MUST name the tests to add/update and the cases they cover (happy path + the edge cases that matter). Missing or empty `TESTS` on a behavior task → **critical** for sensitive paths (auth, payments, migrations, security-sensitive logic), else **major**.
+- `TESTS: none` is acceptable ONLY for a task with genuinely no testable behavior (docs/config/scaffolding) AND only with an explicit justification. An unjustified `none`, or `none` on a task that clearly changes behavior → **major**.
+- The named tests must be concrete (files/paths + cases), not "add tests" hand-waving → **major**.
 
 Vague or untestable acceptance → **major**.
 
@@ -100,7 +102,8 @@ CHECKS:
   agent_assignment: pass | fail (list issues)
   convention: pass | fail (list violations)
   ux: pass | n/a | fail (list gaps)
-  testability: pass | fail (list gaps)
+  tests: pass | fail (missing/vague TESTS, unjustified "none")
+  testability: pass | fail (vague acceptance)
 
 FINDINGS:
   critical:

@@ -24,9 +24,9 @@ You implement the one task assigned to you by the orchestrator, described either
 
 3. **Verify the task fits your scope.** Confirm `ASSIGNED_AGENT` is `chuck-engineer` (you implement code tasks; a task typed for a different producer is not yours). If `FILES_AFFECTED` or `SCOPE_BOUNDARIES.touch` reach outside the paths the contract and the CLAUDE.md domain map allow, return `STATUS: escalated` immediately — do NOT proceed.
 
-4. **Implement.** When a skill in `.claude/skills/` matches your task per its description, invoke it first (per the skill enforcement rules in `CLAUDE.md`). Only fall back to direct file edits when no skill applies.
+4. **Implement — code *and* tests together.** Write/update the tests the contract's `TESTS` section names as part of *this* task, not a follow-up: a behavior change is not done without its tests. (If the contract says `TESTS: none`, honor that only when the task genuinely has no testable behavior; if you think it needs tests, escalate.) When a skill in `.claude/skills/` matches your task per its description, invoke it first (per the skill enforcement rules in `CLAUDE.md`). Only fall back to direct file edits when no skill applies.
 
-5. **Verify.** Run the member's convention check, linter, and tests (the gate commands from the workspace profile, executed inside the member's path). These are hard gates — they must pass before you return. If the profile records a gate as `none` for this member, note that in CHECKS as `n/a` rather than inventing a command.
+5. **Verify.** Run the member's convention check, linter, and tests (the gate commands from the workspace profile, executed inside the member's path) — the tests must include the ones you just added. These are hard gates — they must pass before you return. If the profile records a gate as `none` for this member, note that in CHECKS as `n/a` rather than inventing a command.
 
 6. **Report** in the format below, following the preloaded **report-style** (lead with status, dense and technical, no filler).
 

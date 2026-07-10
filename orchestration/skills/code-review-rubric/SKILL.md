@@ -10,7 +10,7 @@ This skill provides a deterministic walkthrough for reviewing the code changes t
 ## Inputs
 
 - `<task-contract>`: path to the task file (or inline contract text); names the `ASSIGNED_REPO` member
-- `<engineer-report>`: path to the engineer's report (in the member's `reports_dir/chuck-{frontend,backend}-engineer/<ts>.md`)
+- `<engineer-report>`: path to the engineer's report (in the member's `reports_dir/chuck-engineer/<ts>.md`)
 - `<diff-scope>`: git range scoped to the task's member (provided by the reviewer; commonly `git -C <member-path> diff <baseline>..HEAD -- <paths>`)
 - `<observed-gates>`: the gate results the orchestrator ran and recorded in the run manifest (authoritative; cross-check the engineer's self-report against these)
 - The `ASSIGNED_REPO` member's `CLAUDE.md` (domain map and conventions)
@@ -23,8 +23,7 @@ Compare the engineer's `FILES CHANGED` (from report) and the actual changed file
 
 - Every file in `FILES_AFFECTED` (from contract) appears in `FILES CHANGED`. Missing file → **major**.
 - Every changed file is either in `FILES_AFFECTED` or clearly necessary collateral (imports, barrel exports). Unjustified extra file → **major** (escalate to **critical** if outside `SCOPE_BOUNDARIES.touch`).
-- For backend tasks, `INTERFACE EXPOSED` (in report) matches `INTERFACE` declared in the task contract — endpoint paths, DTO field shapes, event names and payloads. Mismatch → **critical**.
-- For frontend tasks, `INTERFACE CONSUMED` (in report) matches what the diff actually consumes from the backend. Mismatch → **major**.
+- The report's `INTERFACE` (exposed and/or consumed) matches the task contract's `INTERFACE` and what the diff actually implements/consumes — endpoint paths, DTO field shapes, event names and payloads. Exposed-side mismatch (what this task produces) → **critical**; consumed-side mismatch (what it depends on) → **major**.
 
 ### 2. Scope boundary
 
@@ -61,8 +60,9 @@ Severity:
 
 ### 5. Tests
 
-Check the diff for test coverage of the new behavior:
+Check the diff for test coverage of the new behavior, against the contract's `TESTS`:
 
+- The tests the contract's `TESTS` named are actually present in the diff and pass (per observed gates). Contract required tests but the diff adds none → **major** (**critical** for sensitive paths). A `TESTS: none` that was not justified, or was wrong (the task clearly changed behavior) → **major**.
 - New code paths have at least one test exercising the happy path.
 - Edge cases identified in step 4 are covered (or explicitly waived with reasoning in NOTES).
 - Tests have meaningful assertions (not just "doesn't throw" or "is truthy").

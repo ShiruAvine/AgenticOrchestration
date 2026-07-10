@@ -32,6 +32,22 @@ export const KNOWLEDGE_SLOTS = ["claude_md", "skills", "rubrics"];
 export const CONFIG_KEYS = ["readiness_check", "proactive_orchestration"];
 export const CONFIG_DEFAULTS = { schema: CONFIG_SCHEMA, readiness_check: true, proactive_orchestration: true };
 export const RUN_STATUSES = ["planning", "executing", "complete", "blocked"];
+// Canonical workflow phases, in order. The run manifest records one {id,status} per
+// phase so progress through the workflow is tracked programmatically (in code + JSON),
+// not as model prose. Finer-grained than RUN_STATUSES; the orchestrator advances them
+// with `manifest.mjs phase`.
+export const RUN_PHASES = [
+  { id: "workspace", label: "Workspace established (profile + active members)" },
+  { id: "scope", label: "Scope clarified with user" },
+  { id: "plan", label: "Plan bundle produced (architect)" },
+  { id: "plan_approved", label: "Plan approved by user" },
+  { id: "plan_review", label: "Plan-review (advisory) surfaced" },
+  { id: "tasks_execution", label: "Tasks execution — per task: execute → review → approval" },
+  { id: "integration_review", label: "Integration review" },
+  { id: "integrate", label: "Integrated & summarized" },
+];
+export const PHASE_IDS = RUN_PHASES.map((p) => p.id);
+export const PHASE_STATUSES = ["pending", "active", "done", "skipped", "blocked"];
 export const TASK_STATUSES = [
   "not_started", "in_progress", "gates_verified",
   "awaiting_review", "awaiting_verification", "done", "blocked",
@@ -270,6 +286,16 @@ export function validateRun(obj) {
 
   if (!(obj.integration_review === null || isString(obj.integration_review))) {
     errs.push("integration_review: expected string|null");
+  }
+
+  // phases is optional (older manifests predate it); when present, each entry must
+  // name a known phase and a valid status.
+  if (obj.phases !== undefined && checkArray(errs, "phases", obj.phases)) {
+    obj.phases.forEach((ph, i) => {
+      const p = `phases[${i}]`;
+      checkEnum(errs, `${p}.id`, ph && ph.id, PHASE_IDS);
+      checkEnum(errs, `${p}.status`, ph && ph.status, PHASE_STATUSES);
+    });
   }
   return { valid: errs.length === 0, errors: errs };
 }

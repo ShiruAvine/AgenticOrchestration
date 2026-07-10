@@ -39,6 +39,8 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 **Verification gates are HARD STOPS.** Wherever the workflow waits for the user — plan approval, per-task verification, final verification — deliver **one compact message that ends with a single plain question, then END YOUR TURN and wait for the user's next message.** Do NOT use an option/question panel (`AskUserQuestion`) for these gates — a normal chat message that ends in a question is exactly what's wanted; the user decides in their reply. In that same turn do NOT append a commit suggestion, extra questions, "next steps", or begin any further work — that buries the very thing the user needs to read and scrolls it out of view. One gate = one compact message ending in one question = full stop.
 
+**Testing is a first-class deliverable, not an afterthought.** Every behavior-changing task carries its own tests: the architect specifies them in the contract's `TESTS` section, the engineer writes them together with the code, and **both** `plan-review-rubric` (is a test spec present?) and `code-review-rubric` (were the tests actually written and meaningful?) check for them. Tests are never deferred to a vague "add tests later" task or left to the pre-existing suite. Only a task with genuinely no testable behavior (docs/config/scaffolding) may carry `TESTS: none`, and it must justify why.
+
 ## Orchestrator workflow
 
 0. **Phase 0 — Establish the workspace.** Before anything else, know what you are pointed at.
@@ -84,7 +86,7 @@ Specialists are generic. They learn each project's specifics at runtime by readi
 
 7. **Optional integration review.** After all tasks are complete (Mode A: each already user-verified; Mode B: each automated-reviewed), offer the user an integration review pass: a final `chuck-code-reviewer` dispatch with the full bundle and the cumulative diff. In **Mode B** this is folded into the single final user verification. Use the manifest's per-member baselines: for a single-member run, that is `git -C <member-path> diff <bundle-baseline>..HEAD`; for a multi-member run, pass one diff per touched member (each with its own baseline) so the reviewer can check interface consistency *across* members. Reviewer runs a global synthesis pass to catch cross-task / cross-member interface drift that per-task review couldn't see. Record the integration-review path in the manifest with `node lib/manifest.mjs set-run <run.json> integration_review=<path>`. Default off — propose it for bundles with ≥3 tasks, known cross-cutting interfaces, or any run that spans more than one member; skip when obviously unnecessary.
 
-8. **Integrate.** Since work has been verified incrementally, this step mainly summarizes the completed branch state, calls out remaining escalations, and identifies follow-ups. Mark the manifest `STATUS: complete`.
+8. **Integrate.** Since work has been verified incrementally, this step mainly summarizes the completed branch state, calls out remaining escalations, and identifies follow-ups. Mark the manifest `phase <run> integrate done` and `STATUS: complete`. (By now you should also have advanced `phase … tasks_execution done` once the last task was verified, and `phase … integration_review done|skipped` at step 7.)
 
 9. **Do not edit feature code.** As orchestrator, do not edit files in domain directories yourself. Docs, plans, manifests, and `.claude/` edits are fine.
 
@@ -102,13 +104,32 @@ validated by `lib/schema.mjs`). **Do not hand-write or hand-edit it** — use
 schema-valid and resumable:
 
 ```
-node lib/manifest.mjs init    <run.json> <spec.json>          # creates it; captures per-member git baselines
+node lib/manifest.mjs init    <run.json> <spec.json>          # creates it; captures per-member git baselines + seeds phases
 node lib/manifest.mjs set     <run.json> <task-id> status=done verdict=approve user_verified=true
 node lib/manifest.mjs set-run <run.json> integration_review=<path>   # run-level fields
+node lib/manifest.mjs phase   <run.json> tasks_execution done  # advance a workflow phase (see below)
 node lib/manifest.mjs gates   <run.json> <task-id> '{"convention":"pass","lint":"pass","test":"pass","build":"pass"}'
 node lib/manifest.mjs status  <run.json> complete
-node lib/manifest.mjs show    <run.json>                      # summary + "RESUME AT: <first not-done task>"
+node lib/manifest.mjs show    <run.json>                      # phase checklist + tasks + "RESUME AT: <first not-done task>"
 ```
+
+**Workflow phases (programmatic).** The manifest carries a `phases` checklist — the
+canonical workflow steps (`workspace → scope → plan → plan_approved → plan_review →
+tasks_execution → integration_review → integrate`), each `pending|active|done|skipped|blocked`,
+defined in `lib/schema.mjs` (not model prose). `init` seeds them (planning phases settled,
+`tasks_execution` active); you **advance them with `manifest.mjs phase`** at each transition, and
+`manifest.mjs show` renders the checklist so you and the user can see where the run is. This
+is the deterministic "are we following the steps" tracker.
+
+**`tasks_execution` expands per task.** `show` renders it, for every task in
+`execution_order`, as three sub-steps — **execute → review → approval** — derived directly
+from that task's own manifest fields (no separate storage, so nothing can drift): *execute* =
+the assigned agent returned a report (`engineer_report`), *review* = a `verdict` was recorded,
+*approval* = the user verified it (`user_verified`). So per-task progress is already tracked by
+the normal `set`/`gates` calls; `tasks_execution` is the umbrella phase over all of them.
+Advance: when every task is verified → `phase … tasks_execution done`; after the integration review →
+`phase … integration_review done` (or `skipped`); at integrate → `phase … integrate done` then
+`status complete`.
 
 `init` takes a spec `{ ticket, topology, workspace_root, active_members:[{id,path}],
 execution_order:[…], tasks:[{id,repo}], bundle? }` and fills the rest (baselines via git,

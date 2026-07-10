@@ -15,15 +15,16 @@
 //   set <run.json> <task-id> <key=value> [<key=value> …]
 //       keys: status, verdict, engineer_report, review, user_verified, fix_rounds
 //   set-run <run.json> <key=value> [<key=value> …]     // run-level fields: integration_review
+//   phase <run.json> <phase-id> <status>               // workflow phase → pending|active|done|skipped|blocked
 //   gates <run.json> <task-id> <gates-json>            // {"test":"pass","build":"fail",…}
 //   status <run.json> <run-status>                     // planning|executing|complete|blocked
-//   show <run.json>                                    // summary + RESUME-AT pointer
+//   show <run.json>                                    // phases + tasks + RESUME-AT pointer
 //   validate <run.json>
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { RUN_SCHEMA, validateRun, GATE_KEYS, GATE_RESULTS, TASK_STATUSES, RUN_STATUSES, VERDICTS } from "./schema.mjs";
+import { RUN_SCHEMA, validateRun, GATE_KEYS, GATE_RESULTS, TASK_STATUSES, RUN_STATUSES, VERDICTS, RUN_PHASES, PHASE_IDS, PHASE_STATUSES } from "./schema.mjs";
 
 function die(m, c = 1) { process.stderr.write(m + "\n"); process.exit(c); }
 function readJSON(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch (e) { die(`cannot read ${p}: ${e.message}`); } }
@@ -60,9 +61,22 @@ function cmdInit(runPath, specPath) {
     gates_observed: { convention: null, lint: null, test: null, build: null },
     user_verified: false, fix_rounds: 0,
   }));
+  // Seed the workflow phases. The manifest is created at execution start, so the
+  // planning phases are already settled: architect path → done; skip-architect
+  // (bundle "inline") → the plan/review phases are skipped, the contract still counts
+  // as approved. Execution is now active; integration/integrate are pending.
+  const skip = bundle === "inline";
+  const seed = {
+    workspace: "done", scope: "done",
+    plan: skip ? "skipped" : "done",
+    plan_approved: "done",
+    plan_review: skip ? "skipped" : "done",
+    tasks_execution: "active", integration_review: "pending", integrate: "pending",
+  };
+  const phases = RUN_PHASES.map((p) => ({ id: p.id, status: seed[p.id] }));
   const run = {
     schema: RUN_SCHEMA, run: nowISO(), ticket: s.ticket, topology: s.topology,
-    bundle, status: "executing", updated: nowISO(),
+    bundle, status: "executing", updated: nowISO(), phases,
     active_members, execution_order: s.execution_order, tasks, integration_review: null,
   };
   save(runPath, run);
@@ -124,6 +138,21 @@ function cmdSetRun(runPath, pairs) {
   process.stdout.write(`updated run: ${pairs.join(" ")}\n`);
 }
 
+// Advance a workflow phase. Deterministic: id + status are validated against the
+// canonical set in schema.mjs.
+function cmdPhase(runPath, id, status) {
+  if (!PHASE_IDS.includes(id)) die(`unknown phase "${id}" (known: ${PHASE_IDS.join(", ")})`);
+  if (!PHASE_STATUSES.includes(status)) die(`status must be one of ${PHASE_STATUSES.join("|")}`);
+  const run = readJSON(runPath);
+  if (!Array.isArray(run.phases)) die("this manifest has no phases (older init) — re-init to enable phase tracking");
+  const ph = run.phases.find((x) => x.id === id);
+  if (!ph) die(`phase "${id}" not in manifest`);
+  ph.status = status;
+  run.updated = nowISO();
+  save(runPath, run);
+  process.stdout.write(`phase ${id} → ${status}\n`);
+}
+
 function cmdGates(runPath, taskId, gatesJson) {
   const run = readJSON(runPath);
   const t = findTask(run, taskId);
@@ -148,6 +177,19 @@ function cmdStatus(runPath, status) {
 
 // --- read -------------------------------------------------------------------
 
+const GLYPH = { done: "✓", active: "▶", pending: "·", skipped: "⊘", blocked: "✗" };
+const gateStr = (t) => GATE_KEYS.map((k) => `${k[0]}:${t.gates_observed ? t.gates_observed[k] ?? "-" : "-"}`).join(" ");
+
+// Per-task sub-steps, DERIVED from the task's own fields (single source of truth —
+// no separate storage, so it can't drift): execute = engineer returned a report;
+// review = a verdict was recorded; approval = the user verified it.
+function taskSteps(t) {
+  const execute = t.status === "blocked" ? "✗" : t.engineer_report ? "✓" : t.status === "in_progress" ? "▶" : "·";
+  const review = t.verdict ? (t.verdict === "approve" ? "✓" : t.verdict === "revise" ? "↻" : "✗") : (t.engineer_report ? "▶" : "·");
+  const approval = t.user_verified ? "✓" : (t.verdict === "approve" ? "▶" : "·");
+  return { execute, review, approval };
+}
+
 function cmdShow(runPath) {
   const run = readJSON(runPath);
   const { valid, errors } = validateRun(run);
@@ -155,12 +197,31 @@ function cmdShow(runPath) {
   lines.push(`RUN ${run.run}  status=${run.status}  topology=${run.topology}`);
   lines.push(`TICKET: ${run.ticket}`);
   lines.push("MEMBERS: " + run.active_members.map((m) => `${m.id}@${m.baseline.slice(0, 8)}`).join(", "));
-  lines.push("TASKS:");
-  for (const id of run.execution_order) {
-    const t = run.tasks.find((x) => x.id === id) || { status: "(missing)" };
-    const gates = GATE_KEYS.map((k) => `${k[0]}:${t.gates_observed ? t.gates_observed[k] ?? "-" : "-"}`).join(" ");
-    lines.push(`  ${id.padEnd(24)} ${String(t.status).padEnd(22)} verdict=${t.verdict ?? "-"} verified=${t.user_verified ?? "-"} [${gates}]`);
+
+  if (Array.isArray(run.phases)) {
+    lines.push("PHASES:");
+    for (const ph of run.phases) {
+      const cur = ph.status === "active" ? "   ← current" : "";
+      if (ph.id === "tasks_execution") {
+        lines.push(`  ${GLYPH[ph.status] || "?"} tasks_execution${cur}`);
+        for (const id of run.execution_order) {
+          const t = run.tasks.find((x) => x.id === id) || {};
+          const s = taskSteps(t);
+          lines.push(`      ${id.padEnd(24)} execute ${s.execute}  review ${s.review}  approval ${s.approval}   [${gateStr(t)}]`);
+        }
+      } else {
+        lines.push(`  ${GLYPH[ph.status] || "?"} ${ph.id}${cur}`);
+      }
+    }
+  } else {
+    // Backward-compat: a manifest created before phase tracking → flat task list.
+    lines.push("TASKS:");
+    for (const id of run.execution_order) {
+      const t = run.tasks.find((x) => x.id === id) || { status: "(missing)" };
+      lines.push(`  ${id.padEnd(24)} ${String(t.status).padEnd(22)} verdict=${t.verdict ?? "-"} verified=${t.user_verified ?? "-"} [${gateStr(t)}]`);
+    }
   }
+
   const next = run.execution_order.find((id) => {
     const t = run.tasks.find((x) => x.id === id);
     return !t || t.status !== "done";
@@ -183,6 +244,7 @@ switch (verb) {
   case "init": if (!a[1]) die("usage: manifest.mjs init <run.json> <spec.json>"); cmdInit(a[0], a[1]); break;
   case "set": if (!a[2]) die("usage: manifest.mjs set <run.json> <task-id> <key=value> …"); cmdSet(a[0], a[1], a.slice(2)); break;
   case "set-run": if (!a[1]) die("usage: manifest.mjs set-run <run.json> <key=value> …"); cmdSetRun(a[0], a.slice(1)); break;
+  case "phase": if (!a[2]) die("usage: manifest.mjs phase <run.json> <phase-id> <status>"); cmdPhase(a[0], a[1], a[2]); break;
   case "gates": if (!a[2]) die("usage: manifest.mjs gates <run.json> <task-id> <gates-json>"); cmdGates(a[0], a[1], a[2]); break;
   case "status": if (!a[1]) die("usage: manifest.mjs status <run.json> <run-status>"); cmdStatus(a[0], a[1]); break;
   case "show": if (!a[0]) die("usage: manifest.mjs show <run.json>"); cmdShow(a[0]); break;

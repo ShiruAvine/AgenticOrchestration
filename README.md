@@ -87,7 +87,7 @@ Work products are written outside the plugin: plan bundles and plan/integration 
 
 ## How runs are tracked & gated
 
-Each run keeps a **run manifest** (`run.json`, in the gitignored reports tree) recording the per-member git baselines and every task's status, observed gate results, review verdict, and user verification. It is the run's source of truth: diff baselines come from it rather than being re-threaded between steps, and an interrupted run **resumes from it** — picking up at the first task not marked `done` instead of starting over.
+Each run keeps a **run manifest** (`run.json`, in the gitignored reports tree) recording the **workflow phases** (a programmatic checklist — `workspace → scope → plan → … → tasks_execution → integrate`, where `tasks_execution` expands per task into execute → review → approval), the per-member git baselines, and every task's status, observed gate results, review verdict, and user verification. It is the run's source of truth: diff baselines come from it rather than being re-threaded between steps, and an interrupted run **resumes from it** — picking up at the first task not marked `done` instead of starting over.
 
 Gates are **independently verified, not self-reported**. After an engineer returns, the orchestrator runs that member's gate commands itself and records the observed result in the manifest; the hard gate keys off the observed result, and the code reviewer cross-checks the engineer's self-report against it. An engineer claiming `pass` when the gate actually fails is caught.
 

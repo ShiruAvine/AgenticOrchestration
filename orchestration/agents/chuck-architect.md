@@ -132,8 +132,15 @@ SCOPE_BOUNDARIES:
 FILES_AFFECTED:
   - <path>: <what changes>
 
+TESTS:
+  - <the tests to ADD or UPDATE for this change, and the behavior each must cover —
+     name the test files/paths and the cases (happy path + the edge cases that matter)>
+  - <or, only when the task genuinely has no testable behavior (docs/config/pure
+     scaffolding): "none — <explicit justification>">
+
 DONE_WHEN:
   - <task-specific acceptance criteria, measurable>
+  - the tests named in TESTS are written and pass (not just the pre-existing suite)
   - the ASSIGNED_REPO member's convention check / lint / tests (from the workspace profile) pass
 
 ESCALATE_BACK_IF:
@@ -149,6 +156,7 @@ ESCALATE_BACK_IF:
 - **Explicit dependencies.** A task that depends on another must declare it via `DEPENDS_ON`. Tasks with the same `ORDER` and no shared deps will be dispatched in parallel.
 - **Sensible ordering.** Backend contract usually precedes frontend consumption. State this with `DEPENDS_ON`, not just `ORDER`.
 - **Tasks are contracts.** A reviewer or an engineer should be able to read one task file in isolation and understand exactly what to build, what's out of scope, and when to stop.
+- **Every behavior-changing task carries its own tests.** Specify them in `TESTS` — do not defer testing to a vague later "add tests" task, and do not rely on the pre-existing suite alone. Only a task with genuinely no testable behavior may set `TESTS: none`, and it must justify why.
 
 ## Scope boundary (hard rule)
 

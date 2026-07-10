@@ -14,7 +14,7 @@
 // the question. All three options map onto existing plugin mechanisms:
 //   • Configure now  → the /orchestrate-config init skill
 //   • Skip session   → the marker below (no re-ask this session)
-//   • Disable here   → config.mjs set workspace readiness_check false (Setting 2)
+//   • Disable here   → config.mjs set workspace readiness_check false
 //
 // Invariants: fast, never throws, never blocks the prompt. Any trouble → exit 0
 // silent. "Configured?" is decided deterministically by lib/readiness.mjs.
@@ -55,7 +55,7 @@ function main() {
   const sid = input.session_id;
   if (!sid) return; // no session id → can't gate once-per-session safely → stay silent
 
-  // Setting 2: respect the readiness-check toggle (fail-open to ON on trouble).
+  // Respect the readiness_check toggle (fail-open to ON on trouble).
   if (!readinessCheckEnabled(cwd)) return;
 
   const st = readinessState(cwd);
